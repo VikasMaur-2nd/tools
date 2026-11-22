@@ -1,7 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
-import { resolve } from 'node:path';
+import { join, resolve } from 'node:path';
 import { runInNewContext } from 'node:vm';
 import { createRequire } from 'node:module';
 import ts from 'typescript';
@@ -202,6 +202,44 @@ test("the service worker gets links' code first, before the other features load 
   for (let i = 0; i < 5; i++) await settle();
   assert.deepEqual(JSON.parse(JSON.stringify(posted)), [{ type: 'cache', urls: [chunk] }]);
   assert.equal(idles.length, 1, 'the other features wait for an idle period');
+});
+
+test("the offline checks' WATCH_POSTS counts the warm-up's post, not links' early one: swIdle's `posted` still waits for the features", async () => {
+  // (Links' code is posted first, on its own: counted as the page's post, swIdle({ posted }) went on before the
+  // features were loaded and their chunks followed, and the offline checks after it raced the worker.)
+  const { WATCH_POSTS } = (await import(join(process.cwd(), 'harness/suites/platform/_helpers.mjs'))) as { WATCH_POSTS: () => void };
+  const page: Dynamic = { location: { origin: ORIGIN, pathname: '/' } };
+  const sent: Dynamic[] = [];
+  const browser: Dynamic = {
+    ServiceWorker: class { postMessage(m: Dynamic) { sent.push(m); } },
+    ServiceWorkerContainer: class {
+      register() { return Promise.resolve(); }
+      get ready() { return Promise.resolve({ active: new browser.ServiceWorker() }); }
+      addEventListener() {}
+    },
+    window: page, location: page.location,
+  };
+  runInNewContext(`(${WATCH_POSTS})()`, browser);
+  const idles: (() => void)[] = [];
+  const s = session({ globals: {
+    process: { env: { NODE_ENV: 'production' } },
+    navigator: { serviceWorker: new browser.ServiceWorkerContainer() },
+    document: { readyState: 'complete' }, window: { addEventListener: () => {} }, setTimeout: (f: () => void) => f(),
+    performance: { now: () => performance.now(), getEntriesByType: () => [{ name: ORIGIN + '/_next/static/chunks/link.js' }] },
+    idle: (f: () => void) => void idles.push(f),
+  } });
+  s.engine.registerSW();
+  for (let i = 0; i < 5; i++) await settle();
+  assert.equal(sent.length, 1, "links' code, posted");
+  assert.deepEqual({ posted: page.__swPosted, early: page.__swSteps.early, register: page.__swSteps.register, ready: page.__swSteps.ready }, { posted: undefined, early: 1, register: 'resolved', ready: true });
+  // The features, one per idle period, then the warm-up's post naming the page.
+  for (let i = 0; i < 20 && idles.length; i++) {
+    idles.shift()!();
+    for (let k = 0; k < 3; k++) await settle();
+  }
+  assert.equal(sent.length, 2);
+  assert.ok((sent[1].urls as string[]).includes(ORIGIN + '/'));
+  assert.equal(page.__swPosted, 1);
 });
 
 test('a link source decodes as the engine hands it over (sanity)', async () => {

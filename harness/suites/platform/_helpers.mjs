@@ -14,14 +14,26 @@ const MOD = process.platform === 'darwin' ? 'Meta' : 'Control';
 const POLL = { polling: 25 };
 const budgets = new WeakMap();
 export const budget = (page, ms) => budgets.get(page)?.(ms) ?? ms;
+/** Each page's requests that haven't finished or failed yet. */
+const openRequests = new WeakMap();
 
 /** Apply the runner's busy-machine budget to page and condition waits. */
 export function test(name, opts, fn) {
   if (typeof opts === 'function') [fn, opts] = [opts, {}];
   registerTest(name, opts, async (t) => {
     t.platformConsoleErrors = [];
+    const prepared = new WeakSet();
     const prepare = (page) => {
+      // (Watched once, however it was announced.)
+      if (prepared.has(page)) return;
+      prepared.add(page);
       budgets.set(page, t.budget);
+      // (Requests still waiting for an answer, for swIdle's account of a timeout.)
+      const open = new Set();
+      openRequests.set(page, open);
+      page.on('request', (r) => open.add(r));
+      page.on('requestfinished', (r) => open.delete(r));
+      page.on('requestfailed', (r) => open.delete(r));
       page.setDefaultTimeout(t.budget(15_000));
       page.setDefaultNavigationTimeout(t.budget(30_000));
       page.on('response', (r) => {
@@ -391,17 +403,41 @@ export async function startProxy(upstreams, { initial = 'A', workerVersions = fa
 /**
  * Prepended to /sw.js by the proxy: counts the worker's unfinished waitUntil() promises and answers
  * { type: 'harness-idle' } on a MessageChannel with the count. It only observes; the worker is unchanged.
+ * { type: 'harness-busy' } answers what is unfinished, oldest first, for a timeout's message: the events
+ * holding the worker (waitUntil) and the steps they wait on (fetches, cache and clients calls, bodies read).
  */
 const SW_PROBE = `(() => {
   let pending = 0;
+  let seq = 0;
+  const open = new Map();
+  const start = (what) => { const id = ++seq; open.set(id, { what: String(what).slice(0, 160), at: Date.now() }); return () => open.delete(id); };
+  const watch = (what, p) => { const end = start(what); Promise.resolve(p).then(end, end); return p; };
   const wait = ExtendableEvent.prototype.waitUntil;
   ExtendableEvent.prototype.waitUntil = function (p) {
     pending++;
-    Promise.resolve(p).then(() => pending--, () => pending--);
+    const end = start('waitUntil ' + this.type + ' ' + (this.request ? this.request.url : (this.data && this.data.type) || ''));
+    Promise.resolve(p).then(() => (pending--, end()), () => (pending--, end()));
     return wait.call(this, p);
   };
+  const wrap = (proto, name, label) => {
+    const f = proto && proto[name];
+    if (typeof f === 'function') proto[name] = function (...args) { return watch(label(this, args), f.apply(this, args)); };
+  };
+  const url = (r) => (r && r.url) || String(r);
+  const proto = (name) => self[name] && self[name].prototype;
+  wrap(self, 'fetch', (_, a) => 'fetch ' + url(a[0]));
+  wrap(proto('Cache'), 'put', (_, a) => 'cache.put ' + url(a[0]));
+  wrap(proto('Cache'), 'match', (_, a) => 'cache.match ' + url(a[0]));
+  wrap(proto('Cache'), 'keys', () => 'cache.keys');
+  wrap(proto('Clients'), 'matchAll', () => 'clients.matchAll');
+  wrap(proto('Response'), 'text', (r) => 'body ' + r.url);
+  wrap(proto('Response'), 'json', (r) => 'body ' + r.url);
   self.addEventListener('message', (e) => {
     if (e.data && e.data.type === 'harness-idle' && e.ports[0]) e.ports[0].postMessage(pending);
+    if (e.data && e.data.type === 'harness-busy' && e.ports[0]) {
+      const now = Date.now();
+      e.ports[0].postMessage({ pending, open: Array.from(open.values(), (o) => o.what + ' (' + (now - o.at) + ' ms)').slice(0, 40) });
+    }
     if (e.data && e.data.type === 'harness-version' && e.ports[0]) e.ports[0].postMessage(self.__harnessVersion);
   });
 })();
@@ -409,23 +445,59 @@ const SW_PROBE = `(() => {
 
 /**
  * Waits until the worker controlling `page` has no unfinished work (install, refreshes, caching what pages
- * posted) and, with `posted`, until this page has posted its 'cache' message (after its warm-up).
+ * posted) and, with `posted`, until this page has posted its warm-up's 'cache' message (WATCH_POSTS). A timeout
+ * says where things stand: the page's side (registered, ready, posted), the worker's unfinished work (SW_PROBE)
+ * and the page's requests still waiting.
  */
 export async function swIdle(page, { posted = false, timeout = 60_000 } = {}) {
-  await until(() => page.evaluate(
-    async (posted) => {
-      const sw = navigator.serviceWorker?.controller;
-      if (!sw || (posted && !window.__swPosted)) return false;
-      const n = await new Promise((resolve) => {
-        const ch = new MessageChannel();
-        const timer = setTimeout(() => { ch.port1.close(); resolve(-1); }, 1000);
-        ch.port1.onmessage = (e) => { clearTimeout(timer); ch.port1.close(); resolve(e.data); };
-        sw.postMessage({ type: 'harness-idle' }, [ch.port2]);
-      });
-      return n === 0;
-    },
-    posted,
-  ), { timeout: budget(page, timeout), what: 'the service worker to finish its cache work' });
+  let last;
+  try {
+    await until(async () => {
+      last = await page.evaluate(
+        async (posted) => {
+          const sw = navigator.serviceWorker?.controller;
+          if (!sw) return 'no controller';
+          if (posted && !window.__swPosted) return 'not posted';
+          const n = await new Promise((resolve) => {
+            const ch = new MessageChannel();
+            const timer = setTimeout(() => { ch.port1.close(); resolve(-1); }, 1000);
+            ch.port1.onmessage = (e) => { clearTimeout(timer); ch.port1.close(); resolve(e.data); };
+            sw.postMessage({ type: 'harness-idle' }, [ch.port2]);
+          });
+          return n;
+        },
+        posted,
+      );
+      return last === 0;
+    }, { timeout: budget(page, timeout), what: 'the service worker to finish its cache work' });
+  } catch (e) {
+    throw new Error(`${e.message}: ${JSON.stringify({ last, ...(await swState(page)) })}`);
+  }
+}
+
+/** Where a page and its worker stand (see swIdle), within a few seconds even when something hangs. */
+async function swState(page) {
+  const state = page.evaluate(async () => {
+    const sw = navigator.serviceWorker?.controller;
+    const reg = await navigator.serviceWorker?.getRegistration();
+    const ask = (type) => new Promise((resolve) => {
+      if (!sw) return resolve(null);
+      const ch = new MessageChannel();
+      const timer = setTimeout(() => { ch.port1.close(); resolve('no answer'); }, 2000);
+      ch.port1.onmessage = (e) => { clearTimeout(timer); ch.port1.close(); resolve(e.data); };
+      sw.postMessage({ type }, [ch.port2]);
+    });
+    return {
+      page: { url: location.pathname, readyState: document.readyState, ...window.__swSteps },
+      controller: sw?.state ?? null,
+      version: await ask('harness-version'),
+      registration: reg ? { active: reg.active?.state, waiting: reg.waiting?.state, installing: reg.installing?.state } : null,
+      worker: await ask('harness-busy'),
+    };
+  }).catch((e) => ({ error: String(e).split('\n')[0] }));
+  const open = [...(openRequests.get(page) ?? [])].map((r) => r.url().replace(/^https?:\/\/[^/]+/, ''));
+  const settled = await Promise.race([state, new Promise((r) => setTimeout(() => r({ error: 'the page did not answer in 5 s' }), 5000))]);
+  return { ...settled, requests: open.slice(0, 20), openRequests: open.length };
 }
 
 /** Wait for the worker installed after a proxy deploy, rather than a registration's old active worker. */
@@ -457,14 +529,41 @@ export async function swVersion(page, version, { timeout = 30_000, active = fals
   }
 }
 
-/** In every page of an offline test: notes when the page posts its 'cache' message to the worker. */
+/**
+ * In every page of an offline test: notes when the page posts its warm-up's 'cache' message to the worker
+ * (`__swPosted`: the one naming the page itself, after every feature has loaded; links' code goes earlier, on its
+ * own, and is only counted in `__swSteps.early`), and how far its worker registration got (`__swSteps`).
+ */
 export const WATCH_POSTS = () => {
   if (typeof ServiceWorker === 'undefined') return; // about:blank and download frames
+  const steps = (window.__swSteps = { register: '', ready: false, early: 0, posted: 0 });
   const post = ServiceWorker.prototype.postMessage;
   ServiceWorker.prototype.postMessage = function (msg, ...rest) {
-    if (msg && msg.type === 'cache') window.__swPosted = (window.__swPosted || 0) + 1;
+    if (msg && msg.type === 'cache') {
+      if (Array.isArray(msg.urls) && msg.urls.includes(location.origin + location.pathname)) steps.posted = window.__swPosted = (window.__swPosted || 0) + 1;
+      else steps.early++;
+    }
     return post.call(this, msg, ...rest);
   };
+  // (Only for a timeout's account: an engine that won't let these be watched just leaves them out.)
+  try {
+    const register = ServiceWorkerContainer.prototype.register;
+    ServiceWorkerContainer.prototype.register = function (...args) {
+      steps.register = 'called';
+      const p = register.apply(this, args);
+      p.then(() => (steps.register = 'resolved'), (e) => (steps.register = `rejected: ${e?.name}: ${e?.message}`));
+      return p;
+    };
+    const ready = Object.getOwnPropertyDescriptor(ServiceWorkerContainer.prototype, 'ready');
+    if (ready?.get && ready.configurable) Object.defineProperty(ServiceWorkerContainer.prototype, 'ready', {
+      ...ready,
+      get() {
+        const p = ready.get.call(this);
+        p.then(() => (steps.ready = true), () => {});
+        return p;
+      },
+    });
+  } catch {}
 };
 
 export const CACHE_NAME = 'json-viewer-v2';
