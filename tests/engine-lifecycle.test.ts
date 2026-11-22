@@ -46,7 +46,11 @@ function later<T>() {
 /** Lets every awaited continuation run. */
 const settled = () => new Promise((r) => setImmediate(r));
 
-function session() {
+/**
+ * `idle`: the page's idle callbacks (default: a task like any). `worker`: the service worker registers and
+ * gets ready, and what pages post to it goes in `sw.posts` (default: registering never ends).
+ */
+function session({ idle, worker = false }: { idle?: (fn: () => void) => void; worker?: boolean } = {}) {
   const tasks = new Map<number, () => void>();
   let id = 0;
   const defer = (fn: () => void) => { tasks.set(++id, fn); return id; };
@@ -60,7 +64,8 @@ function session() {
   const off = (type: string, fn: () => void) => { listeners.get(type)?.delete(fn); };
   const storage = new Map<string, string>();
   const fetches: { url: string; mode?: string; signal?: AbortSignal; reply: ReturnType<typeof later<unknown>> }[] = [];
-  const sw: Dynamic = { listeners: [] as ((e: { data: unknown }) => void)[], registered: 0 };
+  const sw: Dynamic = { listeners: [] as ((e: { data: unknown }) => void)[], registered: 0, posts: [] as unknown[] };
+  const reg = { active: { postMessage: (msg: unknown) => sw.posts.push(msg) } };
   let current: Dynamic | null = null;
   const window: Dynamic = { setTimeout: defer, requestIdleCallback: defer, cancelIdleCallback: cancel, addEventListener: on, removeEventListener: off };
   const document = { readyState: 'complete', documentElement: { lang: 'en', dataset: {} }, createElement: () => ({ getContext: () => null }) };
@@ -78,7 +83,8 @@ function session() {
     navigator: Object.assign(navigator, {
       serviceWorker: {
         addEventListener: (_type: string, fn: (e: { data: unknown }) => void) => sw.listeners.push(fn),
-        register: () => { sw.registered++; return new Promise(() => {}); },
+        register: () => { sw.registered++; return worker ? Promise.resolve(reg) : new Promise(() => {}); },
+        ready: Promise.resolve(reg),
       },
     }),
     fetch: (url: unknown, init?: { mode?: string; signal?: AbortSignal }) => {
@@ -94,7 +100,7 @@ function session() {
     },
     require: (name: string) => {
       if (name === './store') return { store: { get: () => state, set: (patch: object) => { Object.assign(state, patch); }, settings() {} } };
-      if (name === './idle') return { soon: defer, idle: defer };
+      if (name === './idle') return { soon: defer, idle: idle ?? defer };
       if (name === './instance') return { getEngine: () => current, getDiffMenu: () => null };
       if (name === '../analytics') return { PRIVATE: 'private', track() {}, reportError: (error: unknown) => errors.push(error) };
       if (name === '../analytics/load') return { noteLoad() {}, watchPastes() {} };
@@ -717,6 +723,19 @@ test('the service worker is registered once per page; its update notice goes to 
   third.registerSW();
   assert.deepEqual(shown.at(-1), { by: 'third', msg: 'A new version is ready' });
   assert.equal(shown.length, 2);
+});
+
+test("the warm-up hands the page's files to the service worker even when idle callbacks never run", async () => {
+  // Firefox may hold a window's idle callbacks back: timers still run. (And with idle callbacks, each step's
+  // timer finds it done: one post either way.)
+  for (const idle of [() => {}, undefined]) {
+    const s = session({ idle, worker: true });
+    s.engine.registerSW();
+    await s.drain();
+    const posts = s.sw.posts.filter((m: Dynamic) => m?.type === 'cache');
+    assert.equal(posts.length, 1, idle ? 'idle never runs' : 'idle runs');
+    assert.ok(posts[0].urls.includes('https://tools.example/'), 'with the page');
+  }
 });
 
 test('expanding nested JSON is dropped if the document changed while its code loaded', async () => {
