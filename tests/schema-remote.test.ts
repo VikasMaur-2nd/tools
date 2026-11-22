@@ -228,3 +228,13 @@ test('relative refs are relative to where a schema came from: a link\'s schema b
   const r = v({ allOf: [{ $ref: 'https://a.test/s.json' }, { $ref: 'https://cdn.test/v2/s.json' }] }, 1, { resources });
   assert.deepEqual([r.remote, r.problems.map((p) => p.code)], [['https://cdn.test/v2/types.json'], ['unresolved']]);
 });
+
+test('the URLs offered for fetching are in the order the schema names them, as its problems are (CI 45009714466)', () => {
+  const schema = JSON.stringify({ allOf: [{ $ref: 'https://schemas.example.test/user.json' }, { $ref: 'https://schemas.example.test/missing.json#/$defs/x' }, { properties: { a: { $ref: 'https://c.test/c.json' } } }] });
+  const r = validateTexts({ schema, doc: '{}', draft: null, formats: false });
+  assert.deepEqual(r.remote, ['https://schemas.example.test/user.json', 'https://schemas.example.test/missing.json', 'https://c.test/c.json']);
+  assert.deepEqual(r.problems.map((p) => p.params.uri), r.remote);
+  // What a fetched schema refers to comes after the schema's own.
+  const more = validateTexts({ schema: JSON.stringify({ allOf: [{ $ref: 'https://a.test/f.json' }, { $ref: 'https://z.test/own.json' }] }), doc: '{}', draft: null, formats: false, resources: { 'https://a.test/f.json': '{"$ref": "https://b.test/next.json"}' } });
+  assert.deepEqual(more.remote, ['https://z.test/own.json', 'https://b.test/next.json']);
+});

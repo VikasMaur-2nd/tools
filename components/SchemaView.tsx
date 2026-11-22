@@ -22,7 +22,7 @@ import { parse } from '@/lib/json/parser';
 import { SchemaClient } from '@/lib/schema/client';
 import { SchemaController, readDoc, type SchemaState } from '@/lib/schema/controller';
 import { REMOTE_MAX_BYTES, REMOTE_MAX_COUNT, REMOTE_TIMEOUT, fetchSchemas, type FetchFailure } from '@/lib/schema/remote';
-import { locateSource } from '@/lib/schema/places';
+import { locateSource, placeKey, placeOf } from '@/lib/schema/places';
 import { DRAFTS, DRAFT_NAME, type Draft } from '@/lib/schema/drafts';
 import type { InstanceError, Loc, Problem, ValidateResult } from '@/lib/schema/index';
 import type { Portal } from '@/lib/huge/kit';
@@ -106,9 +106,6 @@ function jumpSource(place: SrcPlace | undefined, focus: boolean) {
 
 /** Inputs in another format past this size aren't read again for places (their errors show no line). */
 const PLACES_MAX = 5_000_000;
-
-/** An error's key in the places of its input (see useSourcePlaces): its pointer, and whether it is about the property name. */
-const placeKey = (x: InstanceError) => (x.key ? 'k' : 'v') + x.pointer;
 
 /**
  * The places of result `r`'s errors in the input, when it is in another format than JSON: its text read again for
@@ -477,7 +474,7 @@ function whereText(e: InstanceError, t: T, src?: { at: SrcPlace | undefined }) {
 }
 
 /** An error row's place in an input in another format (see useSourcePlaces), or undefined for a JSON input. */
-const srcOf = (row: Row, places: Map<string, SrcPlace> | null, json: boolean) => (json || row.kind !== 'error' ? undefined : { at: places?.get(placeKey(row.e)) });
+const srcOf = (row: Row, places: Map<string, SrcPlace> | null, json: boolean) => (json || row.kind !== 'error' ? undefined : { at: placeOf(places, row.e) });
 
 function describeRow(row: Row, t: T, src?: { at: SrcPlace | undefined }): string {
   if (row.kind === 'head') return `${row.label} (${row.count})`;
@@ -729,7 +726,7 @@ const Panel = memo(function Panel() {
       jumpSchema(row.e.schemaLoc, true);
       return;
     }
-    const done = json ? jumpDoc(row.e.loc, jump) : jumpSource(places?.get(row.e.pointer), jump);
+    const done = json ? jumpDoc(row.e.loc, jump) : jumpSource(placeOf(places, row.e), jump);
     if (!done && jump) toast('The document changed: wait for the next check', 'info');
   };
   const step = (from: number, d: number) => {

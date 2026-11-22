@@ -315,9 +315,10 @@ function run(req: ValidateRequest, session: SchemaSession): ValidateResult {
     // (The schema text's in its order, then the fetched schemas'.)
     const at = (x: Problem) => (x.doc ? Infinity : (x.loc?.p ?? -1));
     out.problems.push(...list.sort((a, b) => at(a) - at(b)));
-    // What fetching could bring in: the http(s) URLs of remote refs that didn't resolve.
+    // What fetching could bring in: the http(s) URLs of remote refs that didn't resolve, in the problems' order (the
+    // schema text's, then the fetched schemas'). An official meta-schema's isn't one: its `why` is `meta`.
     const remote = new Set<string>();
-    for (const i of v.issues) if (i.code === 'unresolved' && i.params.why === 'remote' && /^https?:\/\//i.test(String(i.params.uri)) && !metaUrl(String(i.params.uri))) remote.add(String(i.params.uri));
+    for (const p of list) if (p.code === 'unresolved' && p.params.why === 'remote' && /^https?:\/\//i.test(String(p.params.uri))) remote.add(String(p.params.uri));
     if (remote.size) out.remote = [...remote];
   };
 
