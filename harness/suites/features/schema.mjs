@@ -6,7 +6,7 @@
 // share links with a schema; errors' places in YAML and CSV input; remote $refs fetched only when asked; the official
 // meta-schemas resolved from the app's own copy.
 import { defaults, test } from '../../lib/api.mjs';
-import { MOD, docOf, enc, resetClip, setDoc, until, waitClip } from './_helpers.mjs';
+import { MOD, docOf, enc, poll, resetClip, setDoc, until, waitClip } from './_helpers.mjs';
 
 defaults({ engines: ['chromium'], width: 1280, height: 900, tags: ['schema'] });
 
@@ -482,10 +482,17 @@ test('remote $refs: nothing fetched until asked; then each schema once, what it 
   t.check(!!next && next.some((x) => /missing\.json.*Request failed: 404/.test(x)), 'the failed one says why; the next one is offered', next);
   t.check(JSON.stringify([...requests].sort()) === JSON.stringify(['/missing.json', '/user.json']), 'each fetched once, nothing else', requests);
   t.check(/^Not fully checked/.test(await state(page)), 'still not fully checked', await state(page));
-  // Asked again: id.json comes (missing.json is asked again too); id "x" isn't an integer.
+  // Asked again: only id.json, never tried, comes (the failed one has its own button); id "x" isn't an integer.
+  t.check(await page.getByRole('button', { name: 'Try the failed ones again' }).isVisible(), 'the failed one can be tried again');
   await page.getByRole('button', { name: 'Fetch referenced schemas' }).click();
   t.check(!!(await waitState(page, /^1 error/)), 'id.json applied: one error', await state(page));
-  t.check(JSON.stringify([...requests].sort()) === JSON.stringify(['/id.json', '/missing.json', '/missing.json', '/user.json']), 'id.json once, the failed one retried', requests);
+  t.check(JSON.stringify([...requests].sort()) === JSON.stringify(['/id.json', '/missing.json', '/user.json']), 'id.json once, the failed one not asked again', requests);
+  // Only the failed one is left: its button tries it again.
+  t.check(!(await page.getByRole('button', { name: 'Fetch referenced schemas' }).count()), 'nothing new to fetch');
+  await page.getByRole('button', { name: 'Try the failed ones again' }).click();
+  t.check(!!(await poll(async () => requests.filter((x) => x === '/missing.json').length === 2, { timeout: 15_000 })), 'tried again');
+  t.check(!!(await until(page, () => !document.querySelector('.sch-remote .spin') && /Request failed: 404/.test(document.querySelector('.sch-remote .sch-urls')?.textContent ?? ''), null, { timeout: 15_000 })), 'still failing, and says why');
+  t.check(JSON.stringify([...requests].sort()) === JSON.stringify(['/id.json', '/missing.json', '/missing.json', '/user.json']), 'the failed one retried', requests);
   // Dismissed: the offer goes.
   await page.getByRole('button', { name: 'Dismiss' }).first().click();
   t.check(!!(await until(page, () => !document.querySelector('.sch-remote'), null, { timeout: 5000 })), 'dismissed');
