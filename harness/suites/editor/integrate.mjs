@@ -101,12 +101,14 @@ test('the JSON box checks as you type, the code box is read-only and coloured, e
   t.check(await until(page, () => document.querySelectorAll('.link-builder .ed textarea')[1]?.value.startsWith('https://tools.vikasmaur.com/#a='), null, 10_000 * k), 'the link in the code box', (await outText(page)).slice(0, 50));
 
   // The page's code colours links too.
+  // (Every placeholder written in its code, such as a=<document>: coloured as one; the page documents more links over time.)
   const docs = await page.evaluate(() => ({
     pre: document.querySelectorAll('.ig-docs .code .lk-k').length,
     inline: document.querySelectorAll('.ig-docs :not(pre) > code .lk-k').length,
     ph: document.querySelectorAll('.ig-docs .lk-ph').length,
+    written: [...document.querySelectorAll('.ig-docs pre, .ig-docs :not(pre) > code')].map((el) => el.textContent).join('\n').match(/=<[\w-]+>/g)?.length ?? 0,
   }));
-  t.check(docs.pre >= 8 && docs.inline >= 6 && docs.ph === 3, "links in the page's code and text are coloured by part", docs);
+  t.check(docs.pre >= 8 && docs.inline >= 6 && docs.ph >= 3 && docs.ph === docs.written, "links in the page's code and text are coloured by part", docs);
 });
 
 test('a 10 MB paste into the JSON box: progress, the link, then typing at the start', { tags: ['slow'] }, async (t) => {
