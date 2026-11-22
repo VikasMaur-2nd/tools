@@ -744,6 +744,7 @@
   "app.schema.msg.not": "不能符合 not 中的 schema",
   "app.schema.msg.unresolvedRemote": "无法解析 $ref {ref}：它不在此 Schema 中。请将它连同其 $id 加到 $defs 下。",
   "app.schema.msg.unresolvedFetch": "无法解析 $ref {ref}：尚未获取 {uri}。请使用“获取引用的 Schema”，或将它连同其 $id 加到 $defs 下。",
+  "app.schema.msg.unresolvedMeta": "无法解析 $ref {ref}：未能加载应用自带的官方元 Schema {uri}。请检查网络连接；下次修改时会再试一次。",
   "app.schema.msg.unresolvedPointer": "无法解析 $ref {ref}：该 JSON Pointer 处没有内容",
   "app.schema.msg.unresolvedAnchor": "无法解析 $ref {ref}：没有这个名称的锚点",
   "app.schema.msg.refNotSchema": "$ref {ref} 指向 {type}，而不是 schema",

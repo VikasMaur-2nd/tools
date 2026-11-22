@@ -984,6 +984,8 @@
   "app.schema.msg.unresolvedRemote": "Can't resolve $ref {ref}: it isn't part of this schema. Add it under $defs with its $id.",
   "app.schema.msg.unresolvedFetch": "Can't resolve $ref {ref}: {uri} isn't fetched yet. Use Fetch referenced schemas, or add it under $defs with its $id.",
   "app.schema.msg.unresolvedFetch._context": "Schema problem: a $ref to a web address (http/https) whose schema isn't fetched (the user can fetch it with the \"Fetch referenced schemas\" button). {uri} is that address.",
+  "app.schema.msg.unresolvedMeta": "Can't resolve $ref {ref}: the app's copy of the official meta-schema {uri} didn't load. Check your connection; it's tried again with your next change.",
+  "app.schema.msg.unresolvedMeta._context": "Schema problem: a $ref to an official JSON Schema meta-schema, which comes with the app, but the app's copy failed to load (offline before it was cached, say). {uri} is the meta-schema's address. The next edit retries.",
   "app.schema.msg.unresolvedPointer": "Can't resolve $ref {ref}: nothing is at that JSON Pointer",
   "app.schema.msg.unresolvedAnchor": "Can't resolve $ref {ref}: no anchor has that name",
   "app.schema.msg.refNotSchema": "$ref {ref} points to a {type}, not a schema",

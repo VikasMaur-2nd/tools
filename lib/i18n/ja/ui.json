@@ -744,6 +744,7 @@
   "app.schema.msg.not": "notのスキーマに適合してはいけません",
   "app.schema.msg.unresolvedRemote": "$ref {ref}を解決できません。このスキーマの一部ではありません。$idを付けて$defsに追加してください。",
   "app.schema.msg.unresolvedFetch": "$ref {ref}を解決できません。{uri}はまだ取得されていません。「参照先のスキーマを取得」を使うか、$idを付けて$defsに追加してください。",
+  "app.schema.msg.unresolvedMeta": "$ref {ref}を解決できません。アプリに同梱された公式メタスキーマ{uri}を読み込めませんでした。接続を確認してください。次に変更したときにもう一度試します。",
   "app.schema.msg.unresolvedPointer": "$ref {ref}を解決できません。そのJSON Pointerの位置には何もありません",
   "app.schema.msg.unresolvedAnchor": "$ref {ref}を解決できません。その名前のアンカーはありません",
   "app.schema.msg.refNotSchema": "$ref {ref}の参照先は{type}で、スキーマではありません",

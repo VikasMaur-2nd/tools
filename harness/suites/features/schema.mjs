@@ -3,7 +3,8 @@
 // Valid and undoing (Valid, never "Validating…" while a check is on its way), a broken schema, Check formats, the
 // phone layout, and from the home page Alt+7, Generate from the document and Close; the view toolbar at the widths
 // where its row is full; a German page's strings, also after a failed load; the palette's Generate on a fresh page;
-// share links with a schema; errors' places in YAML and CSV input; remote $refs fetched only when asked.
+// share links with a schema; errors' places in YAML and CSV input; remote $refs fetched only when asked; the official
+// meta-schemas resolved from the app's own copy.
 import { defaults, test } from '../../lib/api.mjs';
 import { MOD, docOf, enc, resetClip, setDoc, until, waitClip } from './_helpers.mjs';
 
@@ -489,4 +490,33 @@ test('remote $refs: nothing fetched until asked; then each schema once, what it 
   await page.getByRole('button', { name: 'Dismiss' }).first().click();
   t.check(!!(await until(page, () => !document.querySelector('.sch-remote'), null, { timeout: 5000 })), 'dismissed');
   t.check(!t.errors.filter((e) => !/404|Failed to load resource/.test(e)).length, 'no page errors', t.errors.slice(0, 3));
+});
+
+test('official meta-schemas: a $ref to one resolves from the app\'s own copy, by http or https; nothing asked of json-schema.org, nothing offered', async (t) => {
+  const { page } = t;
+  const outside = [];
+  await page.context().route(/^https?:\/\/json-schema\.org\//, (route) => {
+    outside.push(route.request().url());
+    return route.abort();
+  });
+  await t.open('/');
+  // A schema as the document: a type that doesn't exist, a negative minLength in a subschema.
+  t.check(await setDoc(page, '{"type": "objekt", "properties": {"a": {"minLength": -1}}}'), 'a document');
+  await page.keyboard.press('Alt+7');
+  const setSchema = (text) =>
+    page.evaluate((x) => {
+      const ta = document.getElementById('schema-input');
+      ta.focus();
+      ta.select();
+      document.execCommand('insertText', false, x);
+    }, text);
+  const rows = () => page.evaluate((sel) => [...document.querySelectorAll(sel)].map((r) => r.textContent), ROWS);
+  for (const url of ['http://json-schema.org/draft-07/schema#', 'https://json-schema.org/draft/2020-12/schema']) {
+    await setSchema(JSON.stringify({ $ref: url }));
+    t.check(!!(await waitState(page, /^2 errors/, 20_000)), `${url}: both errors, the subschema's too`, await state(page));
+    const list = await rows();
+    t.check(list.some((r) => r.includes('/type')) && list.some((r) => r.includes('/properties/a/minLength')), `${url}: at /type and /properties/a/minLength`, list);
+    t.check(!(await page.evaluate(() => !!document.querySelector('.sch-remote') || /Can't resolve/.test(document.getElementById('view-schema')?.textContent ?? ''))), `${url}: nothing unresolved, nothing offered`);
+  }
+  t.check(outside.length === 0, 'nothing asked of json-schema.org', outside);
 });

@@ -803,6 +803,7 @@
   "app.schema.msg.not": "Não deve atender ao schema em not",
   "app.schema.msg.unresolvedRemote": "Não é possível resolver $ref {ref}: não faz parte deste schema. Adicione-o em $defs com seu $id.",
   "app.schema.msg.unresolvedFetch": "Não é possível resolver $ref {ref}: {uri} ainda não foi baixado. Use Baixar schemas referenciados ou adicione-o em $defs com seu $id.",
+  "app.schema.msg.unresolvedMeta": "Não é possível resolver $ref {ref}: a cópia do metaschema oficial {uri} incluída no app não carregou. Verifique sua conexão; uma nova tentativa é feita na sua próxima alteração.",
   "app.schema.msg.unresolvedPointer": "Não é possível resolver $ref {ref}: não há nada nesse JSON Pointer",
   "app.schema.msg.unresolvedAnchor": "Não é possível resolver $ref {ref}: nenhuma âncora tem esse nome",
   "app.schema.msg.refNotSchema": "$ref {ref} aponta para um {type}, não para um schema",

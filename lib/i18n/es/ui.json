@@ -803,6 +803,7 @@
   "app.schema.msg.not": "No debe cumplir el esquema de not",
   "app.schema.msg.unresolvedRemote": "No se puede resolver $ref {ref}: no forma parte de este esquema. Añádelo en $defs con su $id.",
   "app.schema.msg.unresolvedFetch": "No se puede resolver $ref {ref}: {uri} aún no se ha descargado. Usa Descargar esquemas referenciados o añádelo en $defs con su $id.",
+  "app.schema.msg.unresolvedMeta": "No se puede resolver $ref {ref}: no se cargó la copia del metaesquema oficial {uri} que incluye la app. Revisa tu conexión; se vuelve a intentar con tu próximo cambio.",
   "app.schema.msg.unresolvedPointer": "No se puede resolver $ref {ref}: no hay nada en ese JSON Pointer",
   "app.schema.msg.unresolvedAnchor": "No se puede resolver $ref {ref}: ningún ancla tiene ese nombre",
   "app.schema.msg.refNotSchema": "$ref {ref} apunta a un {type}, no a un esquema",

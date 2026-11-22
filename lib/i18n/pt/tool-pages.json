@@ -2031,7 +2031,7 @@
     ]
   },
   "json-schema-validator": {
-    "hash": "a7967349506e",
+    "hash": "fe537900ec13",
     "title": "Validador de JSON Schema: valide JSON online",
     "description": "Valide JSON com um JSON Schema: drafts 2020-12, 2019-09, 07, 06 e 04. Veja cada erro com linha, caminho e regra. Nada é enviado.",
     "heading": "Validador de JSON Schema",
@@ -2094,7 +2094,7 @@
         "heading": "Referências, schemas remotos e privacidade",
         "paragraphs": [
           "$ref resolve JSON Pointers como #/$defs/address, âncoras como #address e outros recursos incorporados no mesmo schema pelo $id, inclusive com URIs relativas. Um loop que aplica de novo o mesmo schema ao mesmo valor é informado, em vez de travar a página.",
-          "Um $ref para um schema na web só é baixado quando você pede. Até lá ele aparece como não resolvido e essa parte do documento não é verificada, então um documento sem outros erros mostra Verificação incompleta em vez de Válido; o mesmo vale para uma palavra-chave com valor quebrado. Os resultados listam cada endereço com um botão Baixar schemas referenciados, que os baixa direto do seu navegador, sem cookies, e valida de novo; os endereços a que esses schemas fazem referência são listados para outro clique. Os schemas baixados ficam nessa aba e nunca são salvos nem compartilhados. Um endereço que falha diz por quê (quase sempre um servidor que não permite requisições entre origens) e continua não resolvido. Para trabalhar sem baixar nada, adicione o schema em $defs com seu $id: as referências a essa URL passam a ser resolvidas localmente. Os metaschemas oficiais não são carregados para $schema: o validador verifica ele mesmo o valor de cada palavra-chave que conhece."
+          "Um $ref para um schema na web só é baixado quando você pede. Até lá ele aparece como não resolvido e essa parte do documento não é verificada, então um documento sem outros erros mostra Verificação incompleta em vez de Válido; o mesmo vale para uma palavra-chave com valor quebrado. Os resultados listam cada endereço com um botão Baixar schemas referenciados, que os baixa direto do seu navegador, sem cookies, e valida de novo; os endereços a que esses schemas fazem referência são listados para outro clique. Os schemas baixados ficam nessa aba e nunca são salvos nem compartilhados. Um endereço que falha diz por quê (quase sempre um servidor que não permite requisições entre origens) e continua não resolvido. Para trabalhar sem baixar nada, adicione o schema em $defs com seu $id: as referências a essa URL passam a ser resolvidas localmente. Os metaschemas oficiais de todos os drafts suportados, com os vocabulários do 2019-09 e do 2020-12, vêm com o validador, então um $ref para qualquer um deles é resolvido pelo endereço http ou https sem baixar nada, mesmo offline. Para verificar um schema contra o seu draft, cole-o como documento e use {\"$ref\": \"https://json-schema.org/draft/2020-12/schema\"} como schema. O seu próprio schema é verificado sem eles: o validador conhece os valores válidos de cada palavra-chave que suporta."
         ]
       },
       {

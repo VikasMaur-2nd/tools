@@ -2044,7 +2044,7 @@
     ]
   },
   "json-schema-validator": {
-    "hash": "a7967349506e",
+    "hash": "fe537900ec13",
     "title": "JSON Schema Validator: JSON online validieren",
     "description": "JSON gegen ein JSON Schema validieren: Drafts 2020-12, 2019-09, 07, 06 und 04. Jeder Fehler mit Zeile, Pfad und Regel. Kein Upload.",
     "heading": "JSON Schema Validator",
@@ -2107,7 +2107,7 @@
         "heading": "Referenzen, entfernte Schemas und Datenschutz",
         "paragraphs": [
           "$ref löst JSON Pointer wie #/$defs/address, Anker wie #address und andere Ressourcen auf, die per $id im selben Schema eingebettet sind, auch über relative URIs. Eine Schleife, die dasselbe Schema erneut auf denselben Wert anwendet, wird gemeldet, statt die Seite einzufrieren.",
-          "Ein $ref auf ein Schema im Web wird nur abgerufen, wenn du es anforderst. Bis dahin erscheint er als nicht auflösbar, und dieser Teil des Dokuments wird nicht geprüft. Ein Dokument ohne weitere Fehler heißt dann Nicht vollständig geprüft statt Gültig, ebenso bei einem Schlüsselwort mit fehlerhaftem Wert. Die Ergebnisse führen jede Adresse mit der Schaltfläche „Referenzierte Schemas abrufen“ auf: Sie ruft die Schemas direkt aus deinem Browser ab, ohne Cookies, und validiert erneut; Adressen, auf die diese Schemas verweisen, erscheinen für einen weiteren Klick. Abgerufene Schemas bleiben in diesem Tab und werden nie gespeichert oder geteilt. Eine Adresse, die fehlschlägt, nennt den Grund – meist ein Server, der keine Cross-Origin-Anfragen erlaubt – und bleibt nicht auflösbar. Um ohne Abruf zu arbeiten, füge das Schema mit seiner $id unter $defs ein; Referenzen auf diese URL werden dann lokal aufgelöst. Die offiziellen Metaschemas werden für $schema nicht geladen: Der Validator prüft den Wert jedes bekannten Schlüsselworts selbst."
+          "Ein $ref auf ein Schema im Web wird nur abgerufen, wenn du es anforderst. Bis dahin erscheint er als nicht auflösbar, und dieser Teil des Dokuments wird nicht geprüft. Ein Dokument ohne weitere Fehler heißt dann Nicht vollständig geprüft statt Gültig, ebenso bei einem Schlüsselwort mit fehlerhaftem Wert. Die Ergebnisse führen jede Adresse mit der Schaltfläche „Referenzierte Schemas abrufen“ auf: Sie ruft die Schemas direkt aus deinem Browser ab, ohne Cookies, und validiert erneut; Adressen, auf die diese Schemas verweisen, erscheinen für einen weiteren Klick. Abgerufene Schemas bleiben in diesem Tab und werden nie gespeichert oder geteilt. Eine Adresse, die fehlschlägt, nennt den Grund – meist ein Server, der keine Cross-Origin-Anfragen erlaubt – und bleibt nicht auflösbar. Um ohne Abruf zu arbeiten, füge das Schema mit seiner $id unter $defs ein; Referenzen auf diese URL werden dann lokal aufgelöst. Die offiziellen Metaschemas aller unterstützten Drafts, samt den Vokabularen von 2019-09 und 2020-12, sind im Validator enthalten: Ein $ref auf eines davon wird über seine http- oder https-Adresse aufgelöst, ohne dass etwas abgerufen wird, auch offline. Um ein Schema gegen seinen Draft zu prüfen, füge es als Dokument ein und verwende {\"$ref\": \"https://json-schema.org/draft/2020-12/schema\"} als Schema. Dein eigenes Schema wird ohne sie geprüft: Der Validator kennt die gültigen Werte jedes unterstützten Schlüsselworts."
         ]
       },
       {

@@ -3,8 +3,9 @@
  * and the tool page's worked example on the server. Parsing is the app's lossless, tolerant parser; positions are
  * offsets into each text, with line and column (1-based, the editor's).
  */
-import { ARR, OBJ, kids, parse, tooDeep, type JNode, type ParseResult } from '../json/parser';
-import { draftOf, type Draft } from './drafts';
+import { ARR, kids, parse, tooDeep, type JNode, type ParseResult } from '../json/parser';
+import { type Draft } from './drafts';
+import { metaUrl } from './meta';
 import { pointer } from './uri';
 import { Validator, type Failure, type Params, type SchemaIssue } from './validator';
 
@@ -101,7 +102,10 @@ export interface ValidateResult {
   /** All instance errors, including those past `max`. */
   total: number;
   problems: Problem[];
-  /** The http(s) URLs (no fragment) of remote `$ref`s that didn't resolve: what fetching could bring in (none: absent). */
+  /**
+   * The http(s) URLs (no fragment) of remote `$ref`s that didn't resolve: what fetching could bring in (none: absent).
+   * Never an official meta-schema's (./meta.ts): those come with the app.
+   */
   remote?: string[];
   ms: { parse: number; compile: number; validate: number };
 }
@@ -183,9 +187,27 @@ export class SchemaSession {
   private compiled: { sr: ParseResult; v: Validator | null; docs: Map<JNode, string> } | null = null;
   private docText: string | null = null;
   private docParse: ParseResult | null = null;
+  /** The official meta-schemas (./meta.ts) once given (setMeta), parsed: URL → root. */
+  private meta: Map<string, JNode> | null = null;
 
   run(req: ValidateRequest): ValidateResult {
     return run(req, this);
+  }
+
+  /** Gives the session the official meta-schemas: URL (META_URLS) → text. */
+  setMeta(texts: Record<string, string>) {
+    this.meta = new Map();
+    for (const url in texts) {
+      const root = parse(texts[url]).root;
+      if (root) this.meta.set(url, root);
+    }
+  }
+
+  /** The request's schemas name an official meta-schema the session hasn't been given (compiles the schema). */
+  wantsMeta(req: ValidateRequest): boolean {
+    if (this.meta || !req.schema.trim()) return false;
+    const { v } = this.schema(req);
+    return !!v?.issues.some((i) => (i.code === 'unknownSchema' || (i.code === 'unresolved' && i.params.why === 'remote')) && metaUrl(String(i.params.uri)));
   }
 
   /**
@@ -194,7 +216,7 @@ export class SchemaSession {
    */
   schema(req: ValidateRequest): { sr: ParseResult; v: Validator | null; docs: Map<JNode, string>; ms: number } {
     const urls = Object.keys(req.resources ?? {});
-    const key = `${req.draft ?? ''}|${req.formats ? 1 : 0}|${urls.sort().join(' ')}|${req.schema}`;
+    const key = `${req.draft ?? ''}|${req.formats ? 1 : 0}|${this.meta ? 'meta' : ''}|${urls.sort().join(' ')}|${req.schema}`;
     if (this.compiled && key === this.schemaKey) return { ...this.compiled, ms: 0 };
     const t = performance.now();
     const sr = parse(req.schema);
@@ -205,6 +227,11 @@ export class SchemaSession {
       const root = parse(req.resources![url]).root;
       if (!root) continue;
       resources.set(url, root);
+      docs.set(root, url);
+    }
+    // (By their https URLs and the http ones the older drafts' ids use.)
+    for (const [url, root] of this.meta ?? []) {
+      resources.set(url, root).set(url.replace(/^https:/, 'http:'), root);
       docs.set(root, url);
     }
     if (sr.root && !sr.error) {
@@ -261,8 +288,7 @@ function run(req: ValidateRequest, session: SchemaSession): ValidateResult {
     return out;
   }
   out.draft = v.draft;
-  const sch = sr.root.t === OBJ ? kids(sr.root).find((m) => m.key === '$schema') : undefined;
-  if (sch && typeof sch.v === 'string' && draftOf(sch.v) !== null && draftOf(sch.v) !== 3) out.draftFrom = 'schema';
+  if (v.fromSchema) out.draftFrom = 'schema';
   // (In the order they are in the schema's text.)
   const reached = new Set<SchemaIssue>();
   const problems = () => {
@@ -271,14 +297,16 @@ function run(req: ValidateRequest, session: SchemaSession): ValidateResult {
     const own = new Set(v.issues);
     const list = [...v.issues, ...[...reached].filter((i) => !own.has(i))].map((i: SchemaIssue): Problem => {
       const doc = i.at ? docOf(i.at) : null;
-      return { code: i.code, params: i.params, kw: i.kw, warn: i.warn, loc: keyLoc(i.at), ...(reached.has(i) && { reached: true }), ...(doc && { doc }) };
+      // (An official meta-schema unresolved: its copy didn't load, see ./schema.worker.ts. It isn't offered for fetching.)
+      const params = i.code === 'unresolved' && i.params.why === 'remote' && metaUrl(String(i.params.uri)) ? { ...i.params, why: 'meta' } : i.params;
+      return { code: i.code, params, kw: i.kw, warn: i.warn, loc: keyLoc(i.at), ...(reached.has(i) && { reached: true }), ...(doc && { doc }) };
     });
     // (The schema text's in its order, then the fetched schemas'.)
     const at = (x: Problem) => (x.doc ? Infinity : (x.loc?.p ?? -1));
     out.problems.push(...list.sort((a, b) => at(a) - at(b)));
     // What fetching could bring in: the http(s) URLs of remote refs that didn't resolve.
     const remote = new Set<string>();
-    for (const i of v.issues) if (i.code === 'unresolved' && i.params.why === 'remote' && /^https?:\/\//i.test(String(i.params.uri))) remote.add(String(i.params.uri));
+    for (const i of v.issues) if (i.code === 'unresolved' && i.params.why === 'remote' && /^https?:\/\//i.test(String(i.params.uri)) && !metaUrl(String(i.params.uri))) remote.add(String(i.params.uri));
     if (remote.size) out.remote = [...remote];
   };
 

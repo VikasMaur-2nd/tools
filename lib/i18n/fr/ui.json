@@ -803,6 +803,7 @@
   "app.schema.msg.not": "Ne doit pas respecter le schéma de not",
   "app.schema.msg.unresolvedRemote": "Impossible de résoudre $ref {ref} : il ne fait pas partie de ce schéma. Ajoutez-le sous $defs avec son $id.",
   "app.schema.msg.unresolvedFetch": "Impossible de résoudre $ref {ref} : {uri} n'est pas encore récupéré. Utilisez Récupérer les schémas référencés, ou ajoutez-le sous $defs avec son $id.",
+  "app.schema.msg.unresolvedMeta": "Impossible de résoudre $ref {ref} : la copie du méta-schéma officiel {uri} fournie avec l'app ne s'est pas chargée. Vérifiez votre connexion ; un nouvel essai a lieu à votre prochaine modification.",
   "app.schema.msg.unresolvedPointer": "Impossible de résoudre $ref {ref} : rien à ce JSON Pointer",
   "app.schema.msg.unresolvedAnchor": "Impossible de résoudre $ref {ref} : aucune ancre ne porte ce nom",
   "app.schema.msg.refNotSchema": "$ref {ref} désigne un {type}, pas un schéma",

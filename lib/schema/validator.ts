@@ -7,8 +7,8 @@
  * - Compiling scans the schema for resources (`$id`, `id`), anchors (`$anchor`, `$dynamicAnchor`, `$recursiveAnchor`,
  *   plain-name `$id`s before 2019-09), checks the value of every keyword it knows (the schema problems), resolves
  *   every `$ref` and compiles every subschema once. Nothing is fetched here: a remote reference that isn't a resource
- *   of this schema or of `resources` (schemas fetched when the visitor asked: ./remote.ts, and tests' external
- *   schemas) is reported as unresolved.
+ *   of this schema or of `resources` (schemas fetched when the visitor asked: ./remote.ts, the official meta-schemas:
+ *   ./meta.ts, and tests' external schemas) is reported as unresolved.
  * - Validating walks the instance once per applicable subschema. Annotations for `unevaluatedProperties` and
  *   `unevaluatedItems` are tracked only when the schema uses them. Inside `anyOf`, `oneOf`, `not`, `if` and
  *   `contains` a branch is evaluated quietly (stopping at its first failure) unless its errors are wanted.
@@ -53,7 +53,10 @@ export interface CompileOptions {
   draft?: Draft;
   /** Check `format` (by default it is an annotation). */
   formats?: boolean;
-  /** Other schemas by URI: schemas fetched when the visitor asked (./remote.ts), tests' external schemas. */
+  /**
+   * Other schemas by URI: schemas fetched when the visitor asked (./remote.ts), the official meta-schemas (./meta.ts),
+   * tests' external schemas. One schema may be here under several URIs (a meta-schema's http and https addresses).
+   */
   resources?: Map<string, JNode>;
 }
 
@@ -339,6 +342,8 @@ const hasType = (n: JNode, t: TypeName, draft: Draft) => (t === 'integer' ? n.t 
 export class Validator {
   readonly issues: SchemaIssue[] = [];
   readonly draft: Draft;
+  /** `$schema` decided the draft (a draft's URI, or a meta-schema in `resources` that names one). */
+  readonly fromSchema: boolean = false;
   readonly root: S;
   /** Draft-specified keywords seen nowhere the schema's draft reads them, by name (reported once each). */
   private reported = new Set<string>();
@@ -363,13 +368,16 @@ export class Validator {
     if (sch && sch.t === STR) {
       const d = draftOf(sch.v as string);
       if (d === 3) this.issue('draft3', {}, sch, '$schema', true);
-      else if (d) draft = d;
-      else {
-        // A custom meta-schema this schema includes (or a test supplies): its own `$schema` and `$vocabulary` decide.
+      else if (d) {
+        draft = d;
+        this.fromSchema = true;
+      } else {
+        // A meta-schema in `resources` (a vocabulary's, or a test's custom one): its own `$schema` and `$vocabulary` decide.
         const meta = this.metaSchema(sch.v as string);
         if (meta) {
           draft = meta.draft;
           vocab = meta.vocab;
+          this.fromSchema = true;
         } else this.issue('unknownSchema', { uri: sch.v as string, draft: DRAFT_NAME[draft] }, sch, '$schema', true);
       }
     }
@@ -900,7 +908,12 @@ export class Validator {
     let res = this.resources.get(key);
     if (!res) {
       const ext = [...this.external].find(([u]) => normalizeUri(splitFragment(u)[0]) === key)?.[1];
-      if (ext) {
+      const known = ext && this.places.get(ext)?.res;
+      if (known && known.root === ext) {
+        // (Read before under another of its URIs, http for https say: the same resource, its anchors included.)
+        res = known;
+        this.resources.set(key, res);
+      } else if (ext) {
         // (It is read in the draft its own `$schema` names, else in the referring schema's.)
         const own = ext.t === OBJ ? member(ext, '$schema') : undefined;
         const d = own && own.t === STR ? draftOf(own.v as string) : null;

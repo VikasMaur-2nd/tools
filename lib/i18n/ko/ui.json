@@ -744,6 +744,7 @@
   "app.schema.msg.not": "not의 스키마에 맞으면 안 됩니다",
   "app.schema.msg.unresolvedRemote": "$ref {ref}을(를) 확인할 수 없습니다. 이 스키마에 포함되어 있지 않습니다. $id와 함께 $defs에 추가하세요.",
   "app.schema.msg.unresolvedFetch": "$ref {ref}을(를) 확인할 수 없습니다. {uri}을(를) 아직 가져오지 않았습니다. ‘참조된 스키마 가져오기’를 사용하거나 $id와 함께 $defs에 추가하세요.",
+  "app.schema.msg.unresolvedMeta": "$ref {ref}을(를) 확인할 수 없습니다. 앱에 포함된 공식 메타스키마 {uri}을(를) 불러오지 못했습니다. 연결을 확인하세요. 다음에 변경할 때 다시 시도합니다.",
   "app.schema.msg.unresolvedPointer": "$ref {ref}을(를) 확인할 수 없습니다: 그 JSON Pointer 위치에 아무것도 없습니다",
   "app.schema.msg.unresolvedAnchor": "$ref {ref}을(를) 확인할 수 없습니다: 그 이름의 앵커가 없습니다",
   "app.schema.msg.refNotSchema": "$ref {ref}이(가) 가리키는 것은 {type}이며 스키마가 아닙니다",

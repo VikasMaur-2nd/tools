@@ -229,8 +229,10 @@ test('remote references aren\'t fetched by validating: reported as unresolved an
   assert.equal(problemText('unresolved', r.problems[0].params, EN), "Can't resolve $ref https://example.com/missing.json: https://example.com/missing.json isn't fetched yet. Use Fetch referenced schemas, or add it under $defs with its $id.");
   assert.deepEqual(codes(r), ['type']);
   assert.ok(r.problems.every((p) => !p.warn && p.loc));
-  // The official meta-schemas aren't bundled either: offered for fetching like any other.
-  assert.deepEqual(problems(run({ $ref: 'https://json-schema.org/draft/2020-12/schema' }, {})), ['unresolved']);
+  // The official meta-schemas come with the app instead (tests/schema-meta.test.ts): never offered, unresolved only
+  // in a session that hasn't been given them.
+  const meta = run({ $ref: 'https://json-schema.org/draft/2020-12/schema' }, {});
+  assert.deepEqual([problems(meta), meta.problems[0].params.why, meta.remote], [['unresolved'], 'meta', undefined]);
 });
 
 test('invalid schemas: each problem is located in the schema; the keyword is skipped', () => {
