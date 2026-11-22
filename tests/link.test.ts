@@ -168,31 +168,26 @@ test('the example links on /integrate still open their documents', async () => {
   assert.deepEqual(JSON.parse(await decodeDoc(data(cmp.b))), { id: 42, name: 'Ada King', roles: ['author', 'mathematician', 'translator'], active: true });
 });
 
-test('schema links: b is the schema with view=schema, with its draft and Check formats only when set; old links unchanged', async () => {
+test('schema links: b is the schema with view=schema, its draft and Check formats passed on; old links unchanged', async () => {
   // Old links: b without a view (or with another) is Compare's, and carries no schema options.
   assert.deepEqual(parseLink('#a=abc&b=def'), { a: { data: 'abc' }, b: { data: 'def' }, view: undefined, to: undefined });
   assert.deepEqual(parseLink('#a=abc&b=def&view=tree&draft=draft-07&formats=1'), { a: { data: 'abc' }, b: { data: 'def' }, view: 'tree', to: undefined });
-  // The Schema view: its options when b is there, valid ones only.
-  assert.deepEqual(parseLink('#a=abc&b=def&view=schema'), { a: { data: 'abc' }, b: { data: 'def' }, view: 'schema', to: undefined });
-  assert.deepEqual(parseLink('#a=abc&b=def&view=schema&draft=draft-07&formats=1'), { a: { data: 'abc' }, b: { data: 'def' }, view: 'schema', to: undefined, draft: 'draft-07', formats: true });
-  assert.deepEqual(parseLink('#a=abc&b=def&view=schema&draft=7&formats=yes'), { a: { data: 'abc' }, b: { data: 'def' }, view: 'schema', to: undefined });
-  assert.deepEqual(parseLink('#a=abc&view=schema&draft=2019-09&formats=1'), { a: { data: 'abc' }, b: undefined, view: 'schema', to: undefined });
+  // The Schema view: its options as written (the Schema view reads them: lib/schema/controller.ts take).
+  assert.deepEqual(parseLink('#a=abc&b=def&view=schema'), { a: { data: 'abc' }, b: { data: 'def' }, view: 'schema', to: undefined, draft: null, formats: null });
+  assert.deepEqual(parseLink('#a=abc&b=def&view=schema&draft=draft-07&formats=1'), { a: { data: 'abc' }, b: { data: 'def' }, view: 'schema', to: undefined, draft: 'draft-07', formats: '1' });
   // A schema by URL, fetched as a's are.
-  assert.deepEqual(parseLink(`#a=abc&b=${encodeURIComponent('https://x.test/user.schema.json')}&view=schema`), { a: { data: 'abc' }, b: { url: 'https://x.test/user.schema.json' }, view: 'schema', to: undefined });
+  assert.deepEqual(parseLink(`#a=abc&b=${encodeURIComponent('https://x.test/user.schema.json')}&view=schema`), { a: { data: 'abc' }, b: { url: 'https://x.test/user.schema.json' }, view: 'schema', to: undefined, draft: null, formats: null });
   // Round trip: the view is kept (it says what b is), the options only when set.
   const h = await linkHash({ a: { text: '{"a":1}' }, b: { text: '{"type":"object"}' }, view: 'schema', draft: '2019-09', formats: true });
   assert.match(h, /&view=schema&draft=2019-09&formats=1$/);
   const back = parseLink(h);
   assert.ok(back && typeof back === 'object');
-  assert.deepEqual([await decodeDoc(data(back.b)), back.view, back.draft, back.formats], ['{"type":"object"}', 'schema', '2019-09', true]);
+  assert.deepEqual([await decodeDoc(data(back.b)), back.view, back.draft, back.formats], ['{"type":"object"}', 'schema', '2019-09', '1']);
   assert.match(await linkHash({ a: { text: '1' }, b: { text: '{}' }, view: 'schema' }), /&view=schema$/);
   assert.doesNotMatch(await linkHash({ a: { text: '1' }, b: { text: '{}' }, view: 'compare', draft: 'draft-07', formats: true }), /draft|formats|view/);
   assert.doesNotMatch(await linkHash({ a: { text: '1' }, view: 'schema', draft: 'draft-07', formats: true }), /draft|formats/, 'no schema: no options');
-  assert.doesNotMatch(await linkHash({ a: { text: '1' }, b: { text: '{}' }, view: 'schema', draft: 'draft-99' }), /draft/);
-  // Handoff: the same.
-  assert.deepEqual(readHandoff({ toolkumar: 'open', a: '[1]', b: '{}', view: 'schema', draft: 'draft-04', formats: true }), { a: { text: '[1]' }, b: { text: '{}' }, view: 'schema', to: undefined, draft: 'draft-04', formats: true });
-  assert.deepEqual(readHandoff({ toolkumar: 'open', a: '[1]', b: '{}', view: 'compare', draft: 'draft-04', formats: true }), { a: { text: '[1]' }, b: { text: '{}' }, view: 'compare', to: undefined });
-  assert.deepEqual(readHandoff({ toolkumar: 'open', a: '[1]', b: '{}', view: 'schema', draft: 7, formats: 1 }), { a: { text: '[1]' }, b: { text: '{}' }, view: 'schema', to: undefined });
+  // Handoff: the Schema view with b as its schema.
+  assert.deepEqual(readHandoff({ toolkumar: 'open', a: '[1]', b: '{}', view: 'schema' }), { a: { text: '[1]' }, b: { text: '{}' }, view: 'schema', to: undefined });
 });
 
 test('the published functions open the Schema view with a schema option', async () => {

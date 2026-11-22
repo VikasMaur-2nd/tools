@@ -403,11 +403,15 @@ test('share links: a link\'s schema is loaded with its name and options (default
   assert.deepEqual([ctl.state.file, ctl.state.draft, ctl.state.formats], ['n.schema.json', 7, true]);
   assert.deepEqual(ctl.share(), { text: '{"minimum": 0}', draft: 'draft-07', formats: true });
   assert.deepEqual(JSON.parse(storage.get(SCHEMA_KEYS.opts)!), { draft: 7, formats: true });
+  // A draft name the link misspells: the default (links pass names on as written: lib/link.ts).
+  ctl.take({ seq: 4, text: '{"minimum": 1}', name: null, draft: 'draft-99', formats: false });
+  assert.deepEqual([ctl.state.draft, ctl.state.formats], [null, false]);
+  ctl.setOpts({ draft: 7, formats: true });
   // A schema handed over another way (the palette's, a page's) leaves the options alone.
   ctl.take({ seq: 3, text: '{}' });
   assert.deepEqual([ctl.state.draft, ctl.state.formats], [7, true]);
   // Undo gives the schema before back (the visitor's own one too).
   ed.undo();
-  assert.equal(ed.text, '{"minimum": 0}');
+  assert.equal(ed.text, '{"minimum": 1}');
   ctl.detach();
 });

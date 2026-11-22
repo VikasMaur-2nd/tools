@@ -62,7 +62,7 @@ test('Share from the Schema view: b is the schema (minified when valid, as typed
   assert.equal(comparing, false);
   const link = parseLink(new URL(url).hash);
   assert.ok(link && typeof link === 'object' && link.b && 'data' in link.b);
-  assert.deepEqual([await decodeDoc(link.b.data), link.view, link.draft, link.formats], ['{"type":"object","required":["id"]}', 'schema', 'draft-07', true]);
+  assert.deepEqual([await decodeDoc(link.b.data), link.view, link.draft, link.formats], ['{"type":"object","required":["id"]}', 'schema', 'draft-07', '1']);
   // A schema that isn't strict JSON travels as typed; a blank one not at all.
   e.schemaShare = () => ({ text: '{ "type": "object", // note\n}' });
   const loose = parseLink(new URL((await e.shareUrl()).url).hash) as { b: { data: string }; view: string };

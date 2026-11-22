@@ -102,8 +102,8 @@ const PLACES_MAX = 5_000_000;
 
 /**
  * The places of result `r`'s errors in the input, when it is in another format than JSON: its text read again for
- * where each JSON Pointer's value is written (lib/convert/import.ts locateImport, the reader the engine converts
- * with, with the same options). By pointer; null while not known.
+ * where each JSON Pointer's value is written (lib/convert/import.ts locateImport, through the reader the engine
+ * converts with, with the same options). By pointer; null while not known.
  */
 function useSourcePlaces(r: ValidateResult | null, format: string): Map<string, SrcPlace> | null {
   const [got, setGot] = useState<{ r: ValidateResult; at: Map<string, SrcPlace> } | null>(null);
@@ -113,7 +113,10 @@ function useSourcePlaces(r: ValidateResult | null, format: string): Map<string, 
     const text = e.ed.text;
     if (text.length > PLACES_MAX) return;
     let on = true;
-    void import('@/lib/convert/import').then(({ locateImport, sniffDelimiter }) => {
+    // (The reader the engine converts it with, loaded: no other copy of it.)
+    const m = e.source;
+    if (!m) return;
+    void Promise.resolve(m).then(({ locateImport, csvDelimiter }) => {
       if (!on || !ctl.current()) return;
       const pointers = new Set<string>();
       const add = (x: InstanceError) => {
@@ -122,7 +125,7 @@ function useSourcePlaces(r: ValidateResult | null, format: string): Map<string, 
       };
       r.errors.forEach(add);
       const { input, settings } = store.get();
-      const delimiter = input.delimiter === 'auto' ? sniffDelimiter(text) : input.delimiter;
+      const delimiter = input.delimiter === 'auto' ? csvDelimiter(text) : input.delimiter;
       const list = [...pointers];
       const places = locateImport(text, format as 'yaml', format === 'csv' ? { delimiter, header: settings.csvHeader, types: settings.csvTypes } : {}, list);
       if (!places) return;

@@ -287,8 +287,7 @@ link = "https://tools.vikasmaur.com/#a=" + base64.urlsafe_b64encode(raw).decode(
           <li>When Tool Kumar is ready, it tells your page with <code>{'{ toolkumar: "ready", version: 1 }'}</code>.</li>
           <li>
             Your page sends <code>{'{ toolkumar: "open", a, b, view, to }'}</code> to that tab, where <code>a</code> and <code>b</code> are the JSON
-            text. With <code>{'view: "schema"'}</code>, <code>b</code> is the JSON Schema, and <code>draft</code> and <code>formats: true</code> may
-            come with it as for links.
+            text. With <code>{'view: "schema"'}</code>, <code>b</code> is the JSON Schema.
           </li>
           <li>Tool Kumar opens it and answers <code>{'{ toolkumar: "opened" }'}</code>, or <code>{'{ toolkumar: "error", reason }'}</code>.</li>
         </ol>

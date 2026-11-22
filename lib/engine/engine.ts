@@ -357,6 +357,10 @@ export class Engine {
   private converted: string | null = null;
   /** The reader for other formats (./source.ts): loaded once an input is in one. */
   private srcMod: SourceModule | null = null;
+  /** The reader for other formats, once loaded (the Schema view reads such an input again for its errors' places). */
+  get source() {
+    return this.srcMod;
+  }
   private srcLoad: Promise<void> | null = null;
   /** An analysis waits for that reader (see waitForSource). */
   private srcWait = false;
@@ -2846,7 +2850,7 @@ export class Engine {
         }
         return this.toast('That share link is too large to open', 'err');
       }
-      if (!signal.aborted) void this.openRequest({ a: docs[0], b: docs[1], view: link.view, to: link.to, in: link.in, draft: link.draft, formats: link.formats }, signal);
+      if (!signal.aborted) void this.openRequest({ a: docs[0], b: docs[1], view: link.view, to: link.to, in: link.in, draft: link.draft ?? undefined, formats: link.formats === '1' }, signal);
     };
     await open(LINK_DOCUMENT);
   };
