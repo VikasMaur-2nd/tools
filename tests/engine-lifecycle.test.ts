@@ -732,9 +732,9 @@ test("the warm-up hands the page's files to the service worker even when idle ca
     const s = session({ idle, worker: true });
     s.engine.registerSW();
     await s.drain();
-    const posts = s.sw.posts.filter((m: Dynamic) => m?.type === 'cache');
+    // (The warm-up's post is the one naming the page: earlier ones, links' code say, don't.)
+    const posts = s.sw.posts.filter((m: Dynamic) => m?.type === 'cache' && m.urls.includes('https://tools.example/'));
     assert.equal(posts.length, 1, idle ? 'idle never runs' : 'idle runs');
-    assert.ok(posts[0].urls.includes('https://tools.example/'), 'with the page');
   }
 });
 
