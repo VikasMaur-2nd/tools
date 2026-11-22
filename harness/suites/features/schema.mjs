@@ -436,11 +436,14 @@ test('input in another format: errors show and select their places in it, YAML a
     document.execCommand('insertText', false, text);
   }, 'id,email\nx1,a@b.c\n2\n');
   await setSchema(page, '{"items": {"properties": {"id": {"type": "integer"}, "email": {"type": "string"}}}}');
-  const csv = await until(page, (s) => {
+  // (The YAML's result shows, dimmed, until the CSV's comes: wait for the CSV's rows, not any two with lines.)
+  const labels = (s) => [...document.querySelectorAll(s)].map((r) => r.querySelector('.sch-at')?.textContent ?? '');
+  const want = ['/0/id · Ln 2, Col 1', '/1/email · near Ln 3'];
+  const csv = await until(page, ([s, w]) => {
     const all = [...document.querySelectorAll(s)].map((r) => r.querySelector('.sch-at')?.textContent ?? '');
-    return all.length === 2 && all.every((x) => /Ln \d/.test(x)) && all;
-  }, ROWS, { timeout: 15_000 });
-  t.check(JSON.stringify(csv) === JSON.stringify(['/0/id · Ln 2, Col 1', '/1/email · near Ln 3']), 'a CSV cell, and a missing one near its record', csv);
+    return JSON.stringify(all) === w && all;
+  }, [ROWS, JSON.stringify(want)], { timeout: 15_000 });
+  t.check(!!csv, 'a CSV cell, and a missing one near its record', csv || (await page.evaluate(labels, ROWS)));
   await page.locator(`${ROWS}[data-i="0"] .sch-msg`).click();
   t.check((await selected(page)) === 'input:x1', 'a click selects the cell', await selected(page));
   t.check(!t.errors.length, 'no page errors', t.errors.slice(0, 3));
