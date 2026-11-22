@@ -69,6 +69,10 @@ function world() {
     fragments: false,
     /** Cache reads that fail (storage errors). */
     failMatch: ((): boolean => false) as (url: string) => boolean,
+    /** clients.matchAll() never answers (Firefox waits for every tab's process; a closing one may never reply). */
+    stallClients: false,
+    /** The clock's timers (setTimeout in the worker): run by advance(). */
+    timers: [] as { at: number; fn: () => void; id: number }[],
     tabs: [] as string[],
     /** Fetches of a path wait for these, one each (see hold). */
     holds: new Map<string, Promise<void>[]>(),
@@ -102,10 +106,13 @@ function worker(source = readFileSync(join(process.cwd(), 'public/sw.js'), 'utf8
     delete: async (r: string | { url: string }) => env.store.delete(key(r)),
     keys: async () => [...env.store.entries()].map(([url, e]) => ({ url: env.fragments && e.url ? e.url : url })),
   };
-  const fetchFn = async (r: string | { url: string }) => {
+  const fetchFn = async (r: string | { url: string }, init?: { signal?: AbortSignal }) => {
     const url = new URL(key(r));
+    const signal = init?.signal;
+    const aborted = () => new DOMException('The operation was aborted.', 'AbortError');
     const held = env.holds.get(url.pathname)?.shift();
-    if (held) await held;
+    if (held) await (signal ? Promise.race([held, new Promise((_, no) => signal.addEventListener('abort', () => no(aborted())))]) : held);
+    if (signal?.aborted) throw aborted();
     if (!env.online) throw new TypeError('Failed to fetch');
     env.fetched.push(url.pathname);
     const body = env.files[url.pathname];
@@ -119,12 +126,22 @@ function worker(source = readFileSync(join(process.cwd(), 'public/sw.js'), 'utf8
     location: { origin: ORIGIN },
     addEventListener: (type: string, fn: (e: unknown) => void) => void (listeners[type] = fn),
     skipWaiting() {},
-    clients: { matchAll: async () => env.tabs.map((id) => ({ id, postMessage() {} })), claim: async () => {} },
+    clients: {
+      matchAll: () => (env.stallClients ? new Promise(() => {}) : Promise.resolve(env.tabs.map((id) => ({ id, postMessage() {} })))),
+      claim: async () => {},
+    },
   };
   const caches = { open: async () => cache, keys: async () => ['json-viewer-v2'], delete: async () => true };
   const Clock = class extends Date {};
   Object.defineProperty(Clock, 'now', { value: () => env.now });
-  runInNewContext(source, { self, caches, fetch: fetchFn, Response, URL, Set, Map, Promise, JSON, Date: Clock, DOMException });
+  let timerIds = 0;
+  const setTimeoutFn = (fn: () => void, ms = 0) => {
+    const id = ++timerIds;
+    env.timers.push({ at: env.now + ms, fn, id });
+    return id;
+  };
+  const clearTimeoutFn = (id: number) => void (env.timers = env.timers.filter((t) => t.id !== id));
+  runInNewContext(source, { self, caches, fetch: fetchFn, Response, URL, Set, Map, Promise, JSON, Date: Clock, DOMException, AbortController, setTimeout: setTimeoutFn, clearTimeout: clearTimeoutFn });
   /** Dispatches an event: its answer (`res`), and `done` once everything it asked to wait for has. */
   const start = (type: string, props: Record<string, unknown> = {}) => {
     const waits: Promise<unknown>[] = [];
@@ -160,8 +177,13 @@ function worker(source = readFileSync(join(process.cwd(), 'public/sw.js'), 'utf8
     failPut: (fn: (url: string) => boolean) => void (env.failPut = fn),
     failMatch: (fn: (url: string) => boolean) => void (env.failMatch = fn),
     tabs: (ids: string[]) => void (env.tabs = ids),
-    /** Moves the clock on. */
-    advance: (ms: number) => void (env.now += ms),
+    /** Moves the clock on, running the worker's timers due by then. */
+    advance: (ms: number) => {
+      env.now += ms;
+      const due = env.timers.filter((t) => t.at <= env.now).sort((a, b) => a.at - b.at);
+      env.timers = env.timers.filter((t) => t.at > env.now);
+      due.forEach((t) => t.fn());
+    },
     /** The next fetch of `path` waits until the function returned is called. */
     hold: (path: string) => {
       let release = () => {};
@@ -770,4 +792,63 @@ test("service worker: when the cache can't be read, the network answers (never a
   assert.equal(await sw.load('/icon.svg', 'tab', 'image'), '<svg/>');
   assert.match((await sw.visit('/', 'tab2'))!, /Home a/);
   assert.match((await sw.visit('/tools/json-graph', 'tab3'))!, /Graph a/);
+});
+
+/** Whether a promise has settled (after letting everything that can run, run). */
+async function settled(p: Promise<unknown>) {
+  let done = false;
+  void p.then(() => (done = true), () => (done = true));
+  await settle();
+  return done;
+}
+
+test("service worker: a list of tabs that never comes (Firefox, a tab closing) never keeps it busy, nor deletes anything", async () => {
+  const sw = worker();
+  sw.serve(build('a'));
+  await sw.install();
+  sw.tabs(['old']);
+  await sw.post(['/'], 'old');
+  // A deploy is seen while clients.matchAll() doesn't answer.
+  sw.env.stallClients = true;
+  sw.serve(build('b'));
+  const nav = sw.open('/', 'v');
+  assert.match((await nav.text)!, /Home a/);
+  assert.ok(!(await settled(nav.done)), 'waits a moment for the tabs');
+  // (5 s for the tidy-up, 5 more for the tabs it tells a new version is ready.)
+  for (let i = 0; i < 2; i++) {
+    sw.advance(5_000);
+    await settle();
+  }
+  assert.ok(await settled(nav.done), 'then goes on without them: the visit is done');
+  assert.match(sw.cached('/')!, /Home b/);
+  // Not knowing the tabs, nothing goes: build a's files stay, also at the next report.
+  sw.tabs([]);
+  const report = sw.postSoon(['/'], 'n');
+  await settle();
+  sw.advance(5_000);
+  assert.ok(await settled(report), 'a report is done too');
+  for (const f of filesOf('a')) assert.ok(sw.has(f), f);
+  // The tabs answer again: once the old tab is closed, build a goes.
+  sw.env.stallClients = false;
+  sw.advance(61_000);
+  await sw.post(['/'], 'n');
+  assert.deepEqual(sw.statics(), filesOf('b').filter((f) => sw.has(f)).sort());
+  assert.ok(!sw.statics().some((p) => p.includes('/a-')));
+});
+
+test("service worker: a download that never ends is given up, so the worker always gets done", async () => {
+  const sw = worker();
+  sw.serve(build('a'));
+  await sw.install();
+  await sw.post(['/']);
+  sw.serve(build('b'));
+  // The new shell's page script never arrives (the connection hangs, neither data nor error).
+  sw.hold('/_next/static/chunks/b-page.js');
+  const nav = sw.open('/', 'v');
+  await nav.text;
+  assert.ok(!(await settled(nav.done)));
+  sw.advance(30_000);
+  assert.ok(await settled(nav.done), 'given up after 30 s');
+  assert.match(sw.cached('/')!, /Home a/, 'the shell there stays, whole');
+  for (const f of filesOf('a')) assert.ok(sw.has(f), f);
 });

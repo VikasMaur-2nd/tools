@@ -51,6 +51,13 @@ const RETIRED = ORIGIN + '/sw.js?retired';
 const RETIRE_MS = 7 * 24 * 3600 * 1000;
 /** Longer than a tab takes to show among the clients once its page is served (see opening). */
 const OPENING_MS = 60 * 1000;
+/**
+ * The longest the worker waits on what it doesn't control: the list of tabs (CLIENTS_MS), and a download of
+ * its own or the body of a page it stores (FETCH_MS). Past that it goes on without it, so every event's work,
+ * and the queue of tidy-ups and page stores (see serially), comes to an end: the worker always gets idle.
+ */
+const CLIENTS_MS = 5 * 1000;
+const FETCH_MS = 30 * 1000;
 /** The most files followed for one page (the home page has about 40). */
 const MAX_FILES = 500;
 
@@ -71,6 +78,28 @@ const isHashed = (path) => isStatic(path);
  * script under the URL it was started with, Turbopack's bootstrap plus #params=…, which pages name without.)
  */
 const bare = (url) => url.split('#')[0];
+
+/** `promise`'s value, or `fallback` once `ms` have passed without one (the promise may never settle). */
+function within(promise, ms, fallback) {
+  let timer;
+  const late = new Promise((resolve) => (timer = setTimeout(() => resolve(fallback), ms)));
+  return Promise.race([promise, late]).finally(() => clearTimeout(timer));
+}
+
+/** fetch() for the worker's own downloads, never a page's request: given up after FETCH_MS, body included. */
+function download(url, init) {
+  if (typeof AbortController !== 'function') return fetch(url, init);
+  const ctl = new AbortController();
+  setTimeout(() => ctl.abort(), FETCH_MS);
+  return fetch(url, Object.assign({}, init, { signal: ctl.signal }));
+}
+
+/**
+ * The window clients (`all`: another worker's too), or null when the list doesn't come within CLIENTS_MS:
+ * Firefox asks each tab's process for its state before answering, and a tab being closed or reloaded may
+ * never reply. Nothing waits on that for longer.
+ */
+const windowTabs = (all) => within(self.clients.matchAll({ type: 'window', includeUncontrolled: all }), CLIENTS_MS, null).catch(() => null);
 /** Language prefix of a localized page (/es, /pt/tools/…), or ''. */
 const langHome = (path) => (/^\/[a-z]{2}(?=\/|$)/.exec(path) || [''])[0];
 const HUGE_STRINGS_RE = /^\/_next\/static\/media\/huge-strings\.([a-z]{2})\./;
@@ -148,7 +177,7 @@ async function pageFiles(cache, html, fetchMissing, deep = true, page = ORIGIN +
     if (!res) {
       if (!fetchMissing) return true;
       try {
-        res = await fetch(url, { credentials: 'same-origin' });
+        res = await download(url, { credentials: 'same-origin' });
       } catch {
         return false; // offline or a flaky network: try again on a later visit
       }
@@ -187,7 +216,9 @@ async function storePage(cache, key, res, fresh) {
     return { replaced: false };
   }
   const page = typeof key === 'string' ? key : key.url;
-  const html = await res.clone().text();
+  // (A body that stalls is given up: see FETCH_MS. A navigation's isn't one of the worker's downloads.)
+  const html = await within(res.clone().text(), FETCH_MS, null);
+  if (html === null) return false;
   const old = await cache.match(key, MATCH);
   const same = old && isHTML(old) && sameFiles(extractAssets(await old.text()), extractAssets(html));
   if (!same && !(await pageFiles(cache, html, true, false, page)).ok) return false;
@@ -198,7 +229,7 @@ async function storePage(cache, key, res, fresh) {
 async function cacheIfMissing(cache, url) {
   if (await cache.match(url, MATCH)) return true;
   try {
-    const res = await fetch(url, { credentials: 'same-origin' });
+    const res = await download(url, { credentials: 'same-origin' });
     return cacheable(res) && !!(await storePage(cache, url, res));
   } catch {
     return false;
@@ -207,8 +238,8 @@ async function cacheIfMissing(cache, url) {
 
 /**
  * One at a time: tidy-ups (each reads and writes the retired record) and the last step of storing
- * a page (see commit). Both read the cache and the clients only, never the network: a stalled
- * download never holds the queue up.
+ * a page (see commit). Both read the cache and the list of tabs only (that one bounded: see
+ * CLIENTS_MS), never the network: a stalled download never holds the queue up.
  */
 let tidying = Promise.resolve();
 const serially = (fn) => (tidying = tidying.then(fn, fn));
@@ -231,7 +262,8 @@ async function commit(cache, key, page, res, html, partial, fresh) {
     const held = await Promise.all(must.map((u) => cache.match(u, MATCH)));
     if (held.indexOf(undefined) !== -1) return false;
   }
-  await cache.put(key, res);
+  // (The HTML already read, as a new Response: the queue never waits on a network stream.)
+  await cache.put(key, new Response(html, { status: res.status, statusText: res.statusText, headers: res.headers }));
   const replaced = old !== null && !same;
   await tidy(cache, replaced ? { html: old, page, fresh } : null).catch(() => {});
   return { replaced, old };
@@ -255,10 +287,12 @@ function noteOpening(id) {
 
 /**
  * The tabs that may run some build now (`ids`): every window client, another worker's too, and the
- * tabs being opened from the cache. `unnamed`: one of those has no id.
+ * tabs being opened from the cache. `unnamed`: one of those has no id. Null when the list of window
+ * clients doesn't come (see windowTabs): then they are unknown.
  */
 async function liveTabs() {
-  const tabs = await self.clients.matchAll({ type: 'window', includeUncontrolled: true });
+  const tabs = await windowTabs(true);
+  if (!tabs) return null;
   const ids = new Set(tabs.map((c) => c.id));
   const now = Date.now();
   let unnamed = false;
@@ -273,13 +307,13 @@ async function liveTabs() {
 /** Among a generation's tabs: one being opened without an id when it began (see tidy). */
 const UNSEEN = '?';
 
-/** The record's generations of retired files, [{ urls, clients, at }] (see the header). `live`: the tabs open now. */
+/** The record's generations of retired files, [{ urls, clients, at }] (see the header). `live`: the tabs open now, or null if unknown. */
 function generations(rec, live) {
   if (!rec) return [];
   if (Array.isArray(rec.gens)) return rec.gens.filter((g) => g && Array.isArray(g.urls) && Array.isArray(g.clients) && typeof g.at === 'number');
   // An older worker's record: one list, given the tabs open at each deploy. The tabs open now join it,
   // as that worker's next deploy would have had them (they may run a build whose files it lists).
-  if (Array.isArray(rec.urls) && Array.isArray(rec.clients)) return [{ urls: rec.urls.map(bare), clients: rec.clients.concat(Array.from(live)), at: rec.at || Date.now() }];
+  if (Array.isArray(rec.urls) && Array.isArray(rec.clients)) return [{ urls: rec.urls.map(bare), clients: rec.clients.concat(live ? Array.from(live) : [UNSEEN]), at: rec.at || Date.now() }];
   return [];
 }
 
@@ -322,14 +356,19 @@ async function tidy(cache, replaced, posted, from) {
     rec = text && JSON.parse(text);
   } catch {}
   if (!rec && !replaced) return;
-  const { ids, unnamed } = await liveTabs();
+  // Unknown tabs (their list didn't come: see windowTabs) change nothing about them, and delete nothing.
+  const live = await liveTabs();
+  const known = !!live;
+  const ids = known ? live.ids : new Set();
+  const unnamed = known && live.unnamed;
   const now = Date.now();
   const loaded = new Set((posted || []).map((u) => u.split('#')[0]));
-  let gens = generations(rec, ids);
+  let gens = generations(rec, known ? ids : null);
   gens.forEach((g) => {
     const unseen = g.clients.indexOf(UNSEEN) !== -1;
     // A newer tab uses these (a tab while one is UNSEEN may be that one: it soon joins the tabs instead).
     if (!unseen && g.clients.indexOf(from) === -1) g.urls = g.urls.filter((u) => !loaded.has(u));
+    if (!known) return;
     if (unseen && now - g.at >= OPENING_MS) g.clients = g.clients.concat(Array.from(ids));
     g.clients = g.clients.filter((id) => ids.has(id) || (id === UNSEEN && now - g.at < OPENING_MS)); // closed tabs go
   });
@@ -347,10 +386,11 @@ async function tidy(cache, replaced, posted, from) {
       g.urls.forEach((u) => held.add(u));
     });
     const urls = Array.from(cached).filter((u) => isHashed(new URL(u).pathname) && !keep.has(u) && !held.has(u));
-    const clients = Array.from(ids).filter((id) => id !== replaced.fresh);
-    if (urls.length) gens.push({ urls, clients: clients.concat(unnamed ? [UNSEEN] : []), at: now });
+    // (Tabs unknown: UNSEEN stands for all of them, the ones open OPENING_MS later taking its place.)
+    const clients = known ? Array.from(ids).filter((id) => id !== replaced.fresh) : [];
+    if (urls.length) gens.push({ urls, clients: clients.concat(unnamed || !known ? [UNSEEN] : []), at: now });
   }
-  const done = gens.filter((g) => !g.clients.length || now - g.at >= RETIRE_MS);
+  const done = known ? gens.filter((g) => !g.clients.length || now - g.at >= RETIRE_MS) : [];
   if (done.length) {
     if (!keep) keep = await needed(cache, await cache.keys());
     await Promise.all([].concat(...done.map((g) => g.urls)).filter((u) => !keep.has(u)).map((u) => cache.delete(u)));
@@ -374,7 +414,7 @@ async function tidy(cache, replaced, posted, from) {
  */
 async function refreshShell() {
   const cache = await caches.open(CACHE);
-  const res = await fetch('/', { cache: 'no-cache', credentials: 'same-origin' });
+  const res = await download('/', { cache: 'no-cache', credentials: 'same-origin' });
   if (!cacheable(res)) return;
   const html = await res.clone().text();
   const old = await cache.match('/', MATCH);
@@ -388,8 +428,8 @@ async function refreshShell() {
   const done = await serially(() => commit(cache, '/', ORIGIN + '/', res, html, true));
   if (!done || !done.old || extractAssets(done.old).every((u) => now.indexOf(u) !== -1)) return; // not stored, first install, or same build
   // A new deploy is cached and ready: let open tabs offer a reload.
-  const tabs = await self.clients.matchAll({ type: 'window' });
-  tabs.forEach((c) => c.postMessage({ type: 'updated' }));
+  const tabs = await windowTabs(false);
+  if (tabs) tabs.forEach((c) => c.postMessage({ type: 'updated' }));
 }
 
 /**
@@ -404,7 +444,7 @@ async function refreshHomes(cache, url, fresh) {
   await Promise.all(
     homes.map(async (p) => {
       if (!(await cache.match(p, MATCH))) return;
-      const res = await fetch(p, { cache: 'no-cache', credentials: 'same-origin' });
+      const res = await download(p, { cache: 'no-cache', credentials: 'same-origin' });
       if (cacheable(res)) await storePage(cache, ORIGIN + p, res, fresh);
     }),
   );
@@ -420,7 +460,7 @@ self.addEventListener('activate', (event) => {
     caches
       .keys()
       .then((keys) => Promise.all(keys.filter((k) => k.startsWith(PREFIX) && k !== CACHE).map((k) => caches.delete(k))))
-      .then(() => self.clients.claim()),
+      .then(() => within(self.clients.claim(), CLIENTS_MS)),
   );
 });
 
@@ -528,7 +568,8 @@ async function cacheFirst(event, req) {
   const res = hit || (await fetch(req));
   if (!hit && cacheable(res)) {
     const copy = res.clone();
-    event.waitUntil(caches.open(CACHE).then((c) => c.put(req, copy)).catch(() => {}));
+    // (Its body comes with the page's: should that stall, the worker isn't held past FETCH_MS.)
+    event.waitUntil(within(caches.open(CACHE).then((c) => c.put(req, copy)), FETCH_MS).catch(() => {}));
   }
   return req.destination === 'worker' ? asNew(res) : res;
 }
@@ -549,6 +590,6 @@ async function staleWhileRevalidate(event, req) {
     const copy = res.clone();
     return caches.open(CACHE).then((c) => c.put(req, copy)).then(() => res, () => res);
   });
-  event.waitUntil(net.catch(() => {}));
+  event.waitUntil(within(net, FETCH_MS).catch(() => {}));
   return hit || net;
 }
