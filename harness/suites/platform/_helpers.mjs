@@ -20,6 +20,8 @@ export function test(name, opts, fn) {
   if (typeof opts === 'function') [fn, opts] = [opts, {}];
   registerTest(name, opts, async (t) => {
     t.platformConsoleErrors = [];
+    /** Requests a page cancelled itself (it navigated away while they loaded): see checkErrors in offline.mjs. */
+    t.platformAborted = new Set();
     const prepare = (page) => {
       budgets.set(page, t.budget);
       page.setDefaultTimeout(t.budget(15_000));
@@ -27,7 +29,11 @@ export function test(name, opts, fn) {
       page.on('response', (r) => {
         if (r.status() >= 400) t.log(`HTTP ${r.status()} ${r.request().method()} ${r.url()}`);
       });
-      page.on('requestfailed', (r) => t.log(`request failed ${r.url()}: ${r.failure()?.errorText}`));
+      page.on('requestfailed', (r) => {
+        const error = r.failure()?.errorText;
+        if (/NS_BINDING_ABORTED|net::ERR_ABORTED|cancelled/i.test(error || '')) t.platformAborted.add(r.url());
+        t.log(`request failed ${r.url()}: ${error}`);
+      });
       // Firefox's console text can be only "Error" for a rejected chunk import.
       // Read its actual Error argument so it can be classified without ignoring
       // unrelated errors that happen to have the same console label.

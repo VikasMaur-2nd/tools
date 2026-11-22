@@ -24,11 +24,20 @@ const BROKEN = '// export\n[' + Array.from({ length: 52_000 }, (_, i) => `{"id":
 /** Errors of an offline page that are just the network being gone. */
 const NETWORK = /_vercel\/insights|ERR_INTERNET_DISCONNECTED|ERR_EMPTY_RESPONSE|ERR_CONNECTION|Failed to load resource|NetworkError|net::|fetch|Load failed|Cannot load https?:|The network connection was lost|Could not connect/i;
 
+/**
+ * Firefox's report of a load a service worker answered but the page had cancelled (it navigated away while the
+ * body streamed in): Gecko logs this when copying the worker's response into the cancelled request fails. A
+ * rejected respondWith() reads differently ("passed a promise to FetchEvent.respondWith() that rejected").
+ */
+const CANCELLED = /Failed to load ‘([^’]+)’\. A ServiceWorker intercepted the request and encountered an unexpected error/;
+
 async function checkErrors(t, scenario) {
   const details = await Promise.all(t.platformConsoleErrors);
   let at = 0;
   const errors = t.errors.map((e) => e === 'console: Error' ? `console: ${details[at++] || 'Error'}` : e);
-  const relevant = errors.filter((e) => !NETWORK.test(e));
+  // (Only for a request the page itself cancelled: any other load that fails this way still counts.)
+  const cancelled = (e) => { const m = CANCELLED.exec(e); return !!m && t.platformAborted.has(m[1]); };
+  const relevant = errors.filter((e) => !NETWORK.test(e) && !cancelled(e));
   t.check(!relevant.length, `${scenario}: no page errors`, relevant.slice(0, 3));
 }
 
@@ -42,9 +51,12 @@ async function features(t, page, label, { broken = false } = {}) {
       t.check(false, `${label}: ${feature}`, detail);
     }
   };
-  // Checking a document proves hydration completed and also works on pre-harness
-  // builds that do not emit the tk:engine instrumentation mark.
-  const input = await page.locator('.app:visible #input').waitFor({ timeout: t.budget(5000) }).then(() => true, () => false);
+  // The tool must have started before a document is typed: the editor is in the server's HTML, so it shows
+  // before hydration, and text typed then is lost. A landing page also loads its own sample one task after
+  // the tool starts (the JSON validator's is invalid), which would replace text typed in between: hence the
+  // engine's mark (or, on builds before it, waitEngine's own rule), then one more task.
+  const started = await t.app.waitEngine(page, { timeout: t.budget(15_000) }).then(() => page.evaluate(() => new Promise((r) => setTimeout(r, 0))).then(() => true), () => false);
+  const input = started && await page.locator('.app:visible #input').waitFor({ timeout: t.budget(5000) }).then(() => true, () => false);
   if (input) await t.app.setText(page, DOC);
   const ready = input && await t.app.waitValid(page, { timeout: t.budget(5000) }).then(() => true, () => false);
   if (!ready) {
