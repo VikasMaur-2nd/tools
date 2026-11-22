@@ -33,7 +33,10 @@ async function toolKumarLink(json, options = {}) {
   else if (compare !== undefined) hash += '&b=' + (await encode(compare));
   if (view && schema === undefined) hash += '&view=' + view;
   if (to) hash += '&to=' + to;
-  if (sep) hash += '&sep=' + encodeURIComponent(sep);
+  // (A separator with half an emoji can't be encoded: it is left out.)
+  try {
+    if (sep) hash += '&sep=' + encodeURIComponent(sep);
+  } catch {}
   if (arrays) hash += '&arrays=' + arrays;
   if (depth) hash += '&depth=' + depth;
   if (escape === false) hash += '&escape=0';
@@ -130,7 +133,10 @@ async function toolKumarLink(
   else if (compare !== undefined) hash += '&b=' + (await encode(compare));
   if (view && schema === undefined) hash += '&view=' + view;
   if (to) hash += '&to=' + to;
-  if (sep) hash += '&sep=' + encodeURIComponent(sep);
+  // (A separator with half an emoji can't be encoded: it is left out.)
+  try {
+    if (sep) hash += '&sep=' + encodeURIComponent(sep);
+  } catch {}
   if (arrays) hash += '&arrays=' + arrays;
   if (depth) hash += '&depth=' + depth;
   if (escape === false) hash += '&escape=0';

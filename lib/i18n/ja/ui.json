@@ -490,6 +490,7 @@
   "toast.noShare": "このブラウザーでは共有リンクを作成できません",
   "toast.shareLinkTooLarge": "共有リンクが大きすぎるため、開けません",
   "toast.sharedLoaded": "共有されたJSONを読み込みました",
+  "toast.linkLoadFailed": "リンクを開けませんでした。接続を確認してから、ページを再読み込みしてください。",
   "toast.sharedCompareLoaded": "共有された比較を読み込みました",
   "toast.sharedSchemaLoaded": "共有されたJSONとそのスキーマを読み込みました",
   "toast.sharedSchemaOnly": "共有されたスキーマを読み込みました",

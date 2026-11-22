@@ -511,6 +511,7 @@
   "toast.noShare": "Этот браузер не может создавать ссылки для общего доступа",
   "toast.shareLinkTooLarge": "Эта ссылка для общего доступа слишком большая для открытия",
   "toast.sharedLoaded": "JSON из ссылки загружен",
+  "toast.linkLoadFailed": "Не удалось открыть ссылку. Проверьте подключение, затем перезагрузите страницу.",
   "toast.sharedCompareLoaded": "Сравнение из ссылки загружено",
   "toast.sharedSchemaLoaded": "JSON из ссылки и его схема загружены",
   "toast.sharedSchemaOnly": "Схема из ссылки загружена",

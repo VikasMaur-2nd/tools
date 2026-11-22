@@ -490,6 +490,7 @@
   "toast.noShare": "你的浏览器无法创建分享链接",
   "toast.shareLinkTooLarge": "这个分享链接太大，无法打开",
   "toast.sharedLoaded": "已加载分享的 JSON",
+  "toast.linkLoadFailed": "无法打开链接。请检查网络连接，然后重新加载页面。",
   "toast.sharedCompareLoaded": "已加载分享的对比",
   "toast.sharedSchemaLoaded": "已加载分享的 JSON 及其 Schema",
   "toast.sharedSchemaOnly": "已加载分享的 Schema",

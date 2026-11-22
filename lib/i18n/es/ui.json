@@ -504,6 +504,7 @@
   "toast.noShare": "Tu navegador no puede crear enlaces para compartir",
   "toast.shareLinkTooLarge": "El enlace para compartir es demasiado grande para abrirlo",
   "toast.sharedLoaded": "JSON compartido cargado",
+  "toast.linkLoadFailed": "No se pudo abrir el enlace. Revisa tu conexión y luego recarga la página.",
   "toast.sharedCompareLoaded": "Comparación compartida cargada",
   "toast.sharedSchemaLoaded": "JSON compartido y su esquema cargados",
   "toast.sharedSchemaOnly": "Esquema compartido cargado",

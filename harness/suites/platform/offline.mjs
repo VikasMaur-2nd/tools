@@ -169,6 +169,46 @@ test('fresh: after one visit, the shell, visited pages and lazy features work of
   }
 });
 
+/**
+ * Lets the page's first 'cache' post through (links' code, posted as soon as the worker is ready) and drops the
+ * warm-up's (the one naming the page itself, after every feature has loaded): a visit that went offline before it.
+ */
+const EARLY_POSTS_ONLY = () => {
+  if (typeof ServiceWorker === 'undefined') return;
+  const post = ServiceWorker.prototype.postMessage;
+  ServiceWorker.prototype.postMessage = function (msg, ...rest) {
+    if (msg && msg.type === 'cache') {
+      if (msg.urls.includes(location.origin + '/')) return (window.__swDropped = (window.__swDropped || 0) + 1);
+      window.__swPosted = (window.__swPosted || 0) + 1;
+    }
+    return post.call(this, msg, ...rest);
+  };
+};
+
+test('link: offline before the warm-up has cached the features, a share link still opens', async (t) => {
+  // (lib/link.ts loads when a link is opened; it came with the warm-up's pass, so a cached shell offline before
+  // that left the link in the address bar and the old document on screen, saying nothing.)
+  const proxy = await startProxy({ A: t.base });
+  try {
+    await t.context.addInitScript(EARLY_POSTS_ONLY);
+    await t.page.goto(proxy.origin + '/', { waitUntil: 'load' });
+    await swIdle(t.page, { posted: true, timeout: 90_000 });
+    proxy.offline();
+    const { deflateRawSync } = await import('node:zlib');
+    const doc = '{"shared":"offline","n":9007199254740993}';
+    const p2 = await t.context.newPage();
+    const home = await opened(p2, proxy.origin, '/#a=' + deflateRawSync(doc).toString('base64url'));
+    t.check(home.ok && home.tool === 1, 'link offline: the cached shell opens', home);
+    const shown = await p2.waitForFunction(() => /"shared": "offline"/.test(document.getElementById('input')?.value ?? ''), null, { ...POLL, timeout: t.budget(15_000) }).then(() => true, () => false);
+    const toast = await p2.evaluate(() => window.__vis('.toast')?.textContent ?? '');
+    t.check(shown && !/Couldn.t open the link/.test(toast), 'link offline: the linked document opens', toast);
+    t.check(await p2.evaluate(() => location.hash) === '', 'link offline: the link leaves the address bar');
+    await checkErrors(t, 'link');
+  } finally {
+    proxy.close();
+  }
+});
+
 test('localized: after one visit, the Schema view and Flatten show their own strings offline', async (t) => {
   const proxy = await startProxy({ A: t.base });
   try {

@@ -533,8 +533,7 @@ export class Engine {
     this.viewSeq++;
     this.dropGraphWaiters();
     clearTimeout(this.sizeTimer);
-    this.requests[1]?.abort();
-    this.requests[2]?.abort();
+    for (const k of [1, 2, 3] as const) this.requests[k]?.abort();
     window.removeEventListener('load', this.warmSoon);
     clearTimeout(this.warmTimer);
     if (this.persistIdle) cancelIdleCallback(this.persistIdle);
@@ -1778,7 +1777,7 @@ export class Engine {
    * `format`: what the document is read as (default: what its file name says; a document without one, pasted, is read
    * as the one before it was). Undo brings back the one before with the document before.
    */
-  load(text: string, name: string | null, persist = true, outputFirst = false, file?: File, format: SourceFormat = name ? formatOfName(name) : this.inFmt) {
+  load(text: string, name: string | null, persist = true, outputFirst = false, file?: File, format: SourceFormat = name ? formatOfName(name) : this.inFmt, delimiter?: CsvDelimiter) {
     // (A document in the editor: huge mode's file goes.)
     this.huge?.close();
     // Line ends as the editor keeps them, before anything else reads the text: a tree's offsets (from a
@@ -1796,8 +1795,8 @@ export class Engine {
     store.set({ fileName: name, sizes: null, stats: null });
     const names: [string | null, string | null] = [this.edName, name];
     const formats: [SourceFormat, SourceFormat] = [this.inFmt, format];
-    // (A new document: its CSV separator is detected again, a .tsv file's is a tab.)
-    this.csvDelim = /\.tsv$/i.test(name ?? '') ? '\t' : 'auto';
+    // (A new document: its CSV separator is detected again, a .tsv file's is a tab, a link's is the one it names.)
+    this.csvDelim = delimiter ?? (/\.tsv$/i.test(name ?? '') ? '\t' : 'auto');
     if (format !== this.inFmt) this.setInputFormat(format, false);
     else this.publishInput();
     if (text.length >= STEPS_MIN) this.startProgress();
@@ -2385,14 +2384,19 @@ export class Engine {
   }
 
   /**
-   * The newest document asked for in each editor (1: the input, 2: Compare's) by a file, a link, a URL or
-   * the clipboard: a newer request, Clear, or typing or pasting in that editor aborts it (a download stops),
-   * so one that arrives late is dropped instead of replacing a newer one, and says nothing. destroy() aborts both.
+   * The newest document asked for in each editor (1: the input, 2: Compare's, 3: the Schema view's schema) by a file, a
+   * link, a URL or the clipboard: a newer request, Clear, or typing or pasting in that editor aborts it (a download
+   * stops), so one that arrives late is dropped instead of replacing a newer one, and says nothing. destroy() aborts them.
    */
-  private requests: Record<1 | 2, AbortController | null> = { 1: null, 2: null };
+  private requests: Record<1 | 2 | 3, AbortController | null> = { 1: null, 2: null, 3: null };
+
+  /** The Schema view's schema changed (typed, opened, pasted, generated): a schema a link brings is older (see requests). */
+  schemaChanged() {
+    this.requests[3]?.abort();
+  }
 
   /** A new request for a document in `editors` (see requests): its signal aborts once it is superseded. */
-  private request(...editors: (1 | 2)[]): AbortSignal {
+  private request(...editors: (1 | 2 | 3)[]): AbortSignal {
     const c = new AbortController();
     for (const k of editors) {
       this.requests[k]?.abort();
@@ -2402,9 +2406,9 @@ export class Engine {
     return c.signal;
   }
 
-  /** The request for what a link or a handoff asks for: the editors it fills. */
-  private requestFor(r: { a?: unknown; b?: unknown }) {
-    return this.request(...(r.a ? [1 as const] : []), ...(r.b ? [2 as const] : []));
+  /** The request for what a link or a handoff asks for: the editors it fills (with the Schema view, b is the schema). */
+  private requestFor(r: { a?: unknown; b?: unknown; view?: unknown }) {
+    return this.request(...(r.a ? [1 as const] : []), ...(r.b ? [r.view === 'schema' ? (3 as const) : (2 as const)] : []));
   }
 
   openFile(target: 1 | 2 = 1) {
@@ -2808,30 +2812,39 @@ export class Engine {
     const r = this.fresh();
     const rb = b.trim() ? parse(b) : null;
     const compact = (text: string, r: ParseResult | null) => (r?.root && !r.error && !r.issues.length ? formatDoc(text, r, '') : text);
-    // (Another format travels as typed, and says what it is.)
+    // (Another format travels as typed, and says what it is, and CSV how it reads.)
     const source = this.inFmt !== 'json';
-    const { linkHash } = await import('../link');
-    const hash = await linkHash({
+    const s = this.settings;
+    // The whole request now, as the page is at the click: nothing may change it while the link's code loads.
+    const req: LinkRequest = {
       a: a.trim() ? { text: this.jwt ? a.trim() : source ? a : compact(a, r) } : undefined,
       b: rb ? { text: compact(b, rb) } : undefined,
-      view: this.settings.view,
-      to: this.settings.target,
+      view: s.view,
+      to: s.target,
       in: this.inFmt !== 'json' ? this.inFmt : undefined,
-      flat: this.settings.flat,
+      flat: s.flat,
       draft: schema?.draft,
       formats: schema?.formats,
-    });
-    return { url: `${location.origin}/${hash}`, comparing };
+      csv: this.inFmt === 'csv' ? { delimiter: this.csvDelim, header: s.csvHeader, types: s.csvTypes } : undefined,
+    };
+    const { linkHash } = await import('../link');
+    return { url: `${location.origin}/${await linkHash(req)}`, comparing };
   }
 
   /** Opens what a link's fragment asks for (lib/link.ts), then takes it out of the address bar. */
   private openLink = async () => {
     const hash = location.hash;
     if (!linkIn(hash)) return;
-    // Links' code loads now. (If it can't, the link stays in the address bar, for a reload; a newer one is the
-    // newer call's.)
+    // The request for the editors it fills, before its code loads: typing, a file or a newer link meanwhile wins.
+    const has = (pair: string) => new RegExp(`(?:^|[#&])${pair}(?:&|$)`).test(hash);
+    const a = has('a=[^&]*');
+    const b = has('b=[^&]*');
+    const first = a || b ? this.requestFor({ a, b, view: has('view=schema') && 'schema' }) : undefined;
+    // Links' code loads now. (A newer link is the newer call's. If the code can't load, the link stays in the
+    // address bar, for a reload.)
     const L = await import('../link').catch(() => null);
-    if (!L || this.dead || location.hash !== hash) return;
+    if (this.dead || location.hash !== hash) return;
+    if (!L) return this.toast("Couldn't open the link. Check your connection, then reload the page.", 'err');
     const { decodeDoc, LinkTooLarge, LINK_DOCUMENT } = L;
     const link = L.parseLink(hash)!;
     // Exactly as long as Chrome's and Edge's address bar keeps of a paste: the rest of it was dropped (lib/link.ts).
@@ -2844,8 +2857,7 @@ export class Engine {
         : this.toast('That share link is broken or incomplete', 'err');
     if (link === 'broken') return broken();
     // A document past LINK_DOCUMENT opens only when asked (a small link can hold more than a tab can).
-    const open = async (max: number) => {
-      const signal = this.requestFor(link);
+    const open = async (max: number, signal = this.requestFor(link)) => {
       const docs: (LinkDoc | undefined)[] = [];
       try {
         for (const d of [link.a, link.b]) docs.push(d && 'data' in d ? { text: await decodeDoc(d.data, max) } : d);
@@ -2859,9 +2871,9 @@ export class Engine {
         }
         return this.toast('That share link is too large to open', 'err');
       }
-      if (!signal.aborted) void this.openRequest({ a: docs[0], b: docs[1], view: link.view, to: link.to, in: link.in, flat: link.flat, draft: link.draft ?? undefined, formats: link.formats === '1' }, signal);
+      if (!signal.aborted) void this.openRequest({ a: docs[0], b: docs[1], view: link.view, to: link.to, in: link.in, flat: link.flat, draft: link.draft ?? undefined, formats: link.formats === '1', csv: link.csv }, signal);
     };
-    await open(LINK_DOCUMENT);
+    await open(LINK_DOCUMENT, first);
   };
 
   /** Ends the wait for a handoff (see awaitHandoff). */
@@ -2926,7 +2938,11 @@ export class Engine {
       // (Another format, as the link says or its URL's file name does, opens as itself.)
       const format = r.in ?? formatOfName(a.name);
       const pretty = format === 'json' ? open(a.text) : null;
-      this.load(pretty ?? a.text, a.name, true, pretty === null, undefined, format);
+      // (A CSV link's reading: its separator for this document; header and typing for this visit, nothing saved.)
+      this.presetting = !!r.csv;
+      if (r.csv) this.setSettings({ csvHeader: r.csv.header, csvTypes: r.csv.types });
+      this.presetting = false;
+      this.load(pretty ?? a.text, a.name, true, pretty === null, undefined, format, r.csv?.delimiter);
     }
     const view = r.view ?? (b ? 'compare' : undefined);
     // (With the Schema view, b is the schema: its editor takes it, with its options.)
@@ -4636,6 +4652,17 @@ export class Engine {
         .register('/sw.js')
         .then(() => navigator.serviceWorker.ready)
         .then((reg) => {
+          // Hand the SW every asset this page loaded so the app works offline (`pages`: and the pages, whose chunks it follows).
+          const post = (pages: boolean) => {
+            const urls = performance
+              .getEntriesByType('resource')
+              .map((e) => e.name)
+              .filter((u) => u.startsWith(location.origin) && !u.includes('/_vercel/'));
+            const home = /^\/[a-z]{2}(?=\/|$)/.exec(location.pathname)?.[0] || '/';
+            reg.active?.postMessage({ type: 'cache', urls: pages ? [...new Set([location.origin + '/', location.origin + home, location.origin + location.pathname, ...urls])] : urls });
+          };
+          // Links' code first, and handed over at once: a share link opens offline as soon as the shell does.
+          void import('../link').then(() => post(false), () => {});
           // Load the lazy features once so they're cached for offline use and survive a
           // deploy while this tab stays open: one module per idle period, never a long task.
           const mods = [
@@ -4651,13 +4678,7 @@ export class Engine {
           const next = () => {
             const load = mods.shift();
             if (load) return void load().then(() => idle(next), () => idle(next));
-            // Hand the SW every asset this page loaded so the app works offline.
-            const urls = performance
-              .getEntriesByType('resource')
-              .map((e) => e.name)
-              .filter((u) => u.startsWith(location.origin) && !u.includes('/_vercel/'));
-            const home = /^\/[a-z]{2}(?=\/|$)/.exec(location.pathname)?.[0] || '/';
-            reg.active?.postMessage({ type: 'cache', urls: [...new Set([location.origin + '/', location.origin + home, location.origin + location.pathname, ...urls])] });
+            post(true);
           };
           idle(next);
         })

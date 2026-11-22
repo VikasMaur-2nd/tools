@@ -497,6 +497,7 @@
   "toast.noShare": "Dein Browser kann keine Freigabelinks erstellen",
   "toast.shareLinkTooLarge": "Dieser Freigabelink ist zu groß zum Öffnen",
   "toast.sharedLoaded": "Geteiltes JSON geladen",
+  "toast.linkLoadFailed": "Der Link ließ sich nicht öffnen. Prüfe deine Verbindung und lade die Seite dann neu.",
   "toast.sharedCompareLoaded": "Geteilten Vergleich geladen",
   "toast.sharedSchemaLoaded": "Geteiltes JSON und sein Schema geladen",
   "toast.sharedSchemaOnly": "Geteiltes Schema geladen",
