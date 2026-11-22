@@ -949,52 +949,61 @@ function records(n: number, seed = 42) {
   return `{"data":[${Array.from({ length: n }, (_, i) => rec(i)).join(',')}],"total":${n}}`;
 }
 
-test('convert with live (the page): the same output in slices of about 8 ms, the page free in between, and stops when not wanted', async () => {
-  const text = records(4600); // about 1 MB
-  const x = doc(text);
-  // Slices: the longest stretch of work between two yields to the page (CPU time: a busy machine's other processes
-  // don't count, see ./timing.ts).
+test('convert with live (the page): the same output in slices of 8 ms, the page free in between, and stops when not wanted', async () => {
+  // A stubbed clock, so slices don't depend on the machine's speed (a fast one did a 1 MB document in 3 slices
+  // of real time): each read is a millisecond later, as if every step of the work (about 1,024 items, well under
+  // a millisecond: see the steps' timing test above) took one. A slice reads the clock after each step and gives
+  // the page a turn once 8 ms have passed, so it is 8 steps here, the same everywhere.
+  const x = doc(records(4600)); // about 1 MB
+  const inputs = { flatten: x, unflatten: doc(flatten(x).text) };
+  const stepsOf = (target: 'flatten' | 'unflatten') => {
+    const g = (target === 'flatten' ? flattenSteps : unflattenSteps)(inputs[target]);
+    let n = 0;
+    while (!g.next().done) n++;
+    return n;
+  };
+  const want = { flatten: convert(x, 'flatten', { rootName: 'Root' }), unflatten: convert(inputs.unflatten, 'unflatten', { rootName: 'Root' }) };
+  const counts = { flatten: stepsOf('flatten'), unflatten: stepsOf('unflatten') };
+  // The page's turns: each slice ends with a new task (a MessageChannel message), not a microtask.
   const RealChannel = globalThis.MessageChannel;
-  let longest = 0;
-  let last = cpuNow();
-  let slices = 0;
+  let turns = 0;
   globalThis.MessageChannel = class extends RealChannel {
     constructor() {
       super();
-      const t = cpuNow();
-      longest = Math.max(longest, t - last);
-      slices++;
-      const p1 = this.port1;
-      const set = Object.getOwnPropertyDescriptor(Object.getPrototypeOf(p1), 'onmessage')!.set!;
-      Object.defineProperty(p1, 'onmessage', { set: (f: (e: MessageEvent) => void) => set.call(p1, (e: MessageEvent) => ((last = cpuNow()), f(e))) });
+      turns++;
     }
   } as typeof MessageChannel;
+  let clock = 0;
+  performance.now = () => ++clock;
   try {
     for (const target of ['flatten', 'unflatten'] as const) {
-      const input = target === 'flatten' ? x : doc(flatten(x).text);
       const notes: unknown[] = [];
-      [longest, slices, last] = [0, 0, cpuNow()];
-      const t0 = performance.now();
-      const out = await convert(input, target, { rootName: 'Root', live: () => true, report: (n) => notes.push(n) });
-      longest = Math.max(longest, cpuNow() - last);
-      assert.equal(out, convert(input, target, { rootName: 'Root' }), target);
+      let asked = 0;
+      turns = 0;
+      const out = await convert(inputs[target], target, { rootName: 'Root', live: () => (asked++, true), report: (n) => notes.push(n) });
+      assert.equal(out, want[target], target);
       assert.deepEqual(notes, [{ note: '', warn: false, flip: false, error: '' }]);
-      console.log(`sliced ${target}, 1 MB: ${slices} slices in ${Math.round(performance.now() - t0)} ms, the longest ${longest.toFixed(1)} ms`);
-      assert.ok(slices > 3, `${target}: ${slices} slices`);
-      // 8 ms a slice, plus the work between two checks (1,024 items) on a busy machine.
-      assert.ok(longest < 60, `${target}: a slice took ${longest} ms`);
+      const steps = counts[target];
+      assert.ok(steps > 32, `${target}: ${steps} steps`);
+      // A turn for the page after every 8 steps (8 ms), never later; asked after each whether it's still wanted.
+      assert.deepEqual({ turns, asked }, { turns: Math.floor(steps / 8), asked: Math.floor(steps / 8) }, `${target}: ${steps} steps`);
     }
+    // Not wanted any more: it stops at the next turn, reporting nothing.
+    const notes: unknown[] = [];
+    let asked = 0;
+    assert.equal(await convert(x, 'flatten', { rootName: 'Root', live: () => ++asked < 2, report: (n) => notes.push(n) }), '');
+    assert.deepEqual([asked, notes], [2, []]);
+    // Small documents in one slice: done before the clock is past 8 ms, nothing asked.
+    assert.equal(await convert(doc('{"a":{"b":1}}'), 'flatten', { rootName: 'Root', live: () => false }), '{\n  "a.b": 1\n}');
   } finally {
     globalThis.MessageChannel = RealChannel;
+    delete (performance as { now?: unknown }).now; // (the stub was an own property over Performance.prototype.now)
   }
-  // Not wanted any more: it stops at the next slice, reporting nothing.
-  const notes: unknown[] = [];
-  let asked = 0;
-  assert.equal(await convert(x, 'flatten', { rootName: 'Root', live: () => ++asked < 2, report: (n) => notes.push(n) }), '');
-  assert.deepEqual([asked, notes], [2, []]);
-  // Other targets convert at once; small documents in one slice.
+  assert.equal(performance.now, Object.getPrototypeOf(performance).now, 'the real clock is back');
+  // Other targets convert at once.
   assert.equal(convert(doc('{"a":1}'), 'yaml', { rootName: 'Root', live: () => false }), 'a: 1\n');
-  assert.equal(await convert(doc('{"a":{"b":1}}'), 'flatten', { rootName: 'Root', live: () => false }), '{\n  "a.b": 1\n}');
+  // With the real clock: the same output.
+  assert.equal(await convert(x, 'flatten', { rootName: 'Root', live: () => true }), want.flatten);
 });
 
 test('speed: a 5 MB document flattens and unflattens within 3 s of CPU time each', () => {
