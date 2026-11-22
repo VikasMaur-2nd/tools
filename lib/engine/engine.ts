@@ -2806,6 +2806,7 @@ export class Engine {
       view: this.settings.view,
       to: this.settings.target,
       in: this.inFmt !== 'json' ? this.inFmt : undefined,
+      flat: this.settings.flat,
     });
     return { url: `${location.origin}/${hash}`, comparing };
   }
@@ -2839,7 +2840,7 @@ export class Engine {
         }
         return this.toast('That share link is too large to open', 'err');
       }
-      if (!signal.aborted) void this.openRequest({ a: docs[0], b: docs[1], view: link.view, to: link.to, in: link.in }, signal);
+      if (!signal.aborted) void this.openRequest({ a: docs[0], b: docs[1], view: link.view, to: link.to, in: link.in, flat: link.flat }, signal);
     };
     await open(LINK_DOCUMENT);
   };
@@ -2913,7 +2914,14 @@ export class Engine {
       this.loadCompare(open(b.text) ?? b.text, b.name);
     }
     const view = r.view ?? (b ? 'compare' : undefined);
-    if (view === 'convert') this.setConvert(r.to ? { target: r.to } : {});
+    if (view === 'convert') {
+      // Flatten's options, before the conversion: for this visit only (presetting saves nothing), so the reader's
+      // own come back on the next one.
+      this.presetting = !!r.flat;
+      if (r.flat) this.setSettings({ flat: r.flat });
+      this.presetting = false;
+      this.setConvert(r.to ? { target: r.to } : {});
+    }
     else if (view && view !== this.settings.view) this.setView(view);
     const msg =
       from !== undefined ? (from ? `Opened JSON sent by ${from}` : 'Opened JSON sent by another page')

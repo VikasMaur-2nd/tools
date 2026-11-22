@@ -39,11 +39,17 @@ function session(text: string, view = 'convert') {
   const calls: unknown[][] = [];
   const state: Dynamic = { settings: { view, target: 'flatten' }, convert: { error: null } };
   const out: Dynamic = {};
+  // What the engine writes to this browser's storage (its saved settings: what the next visit gets).
+  const stored: [string, string][] = [];
   runInNewContext(js, {
     // (No timers: the wait's two-minute expiry never matters here.)
     exports: out, performance, URL, Blob, Error, Promise, setTimeout: () => 0,
+    location: { origin: 'https://tools.vikasmaur.com' },
+    localStorage: { getItem: () => null, setItem: (k: string, v: string) => stored.push([k, v]), removeItem: () => {} },
     require: (name: string) => {
-      if (name === './store') return { paired, store: { get: () => state, set: (patch: Dynamic) => Object.assign(state, patch) } };
+      if (name === './store') return { paired, store: { get: () => state, set: (patch: Dynamic) => Object.assign(state, patch), settings: (patch: Dynamic) => (state.settings = { ...state.settings, ...patch }) } };
+      if (name === '../analytics/load') return { noteLoad: () => {} };
+      if (name === '../link' || name === './rules') return load(resolve(__dirname, '../lib/engine', name));
       if (name === '../analytics') return { track: (...args: unknown[]) => calls.push(['track', ...args]), reportError: () => {} };
       if (name === '../i18n/ui') return { rt: EN };
       if (name === './targets') return load(resolve(__dirname, '../lib/engine/targets'));
@@ -70,7 +76,7 @@ function session(text: string, view = 'convert') {
   engine.replaceText = (...args: unknown[]) => calls.push(['replace', ...args]);
   engine.setConvert = (...args: unknown[]) => calls.push(['setConvert', ...args]);
   engine.transform = (...args: unknown[]) => calls.push(['transform', args.length]);
-  return { engine, calls, ed, state };
+  return { engine, calls, ed, state, stored };
 }
 
 const flush = () => new Promise((r) => setTimeout(r, 0));
@@ -266,4 +272,39 @@ test('Download on Flatten and Unflatten: JSON Lines in, a .jsonl file of type ap
   // Not JSON Lines: JSON, named and typed as before.
   assert.deepEqual(await download('[{"a":{"b":1}}]', 'events.json', 'flatten'), [['[\n  {\n    "a.b": 1\n  }\n]', 'events.flat.json', 'application/json']]);
   assert.deepEqual(await download('{"a":{"b":1}}', null, 'flatten'), [['{\n  "a.b": 1\n}', 'data.flat.json', 'application/json']]);
+});
+
+test('a link to flatten or unflatten: its options apply before the first conversion, and the next visit gets the reader\'s own', async () => {
+  // (A link kept the target but not the options; applied as settings, they must not overwrite the saved ones.)
+  const own = { sep: '_', arrays: 'keep', escape: true, depth: 0 };
+  const link = { sep: '&=#%日本', arrays: 'dot', escape: false, depth: 2 };
+  for (const [to, flat, want] of [['flatten', link, link], ['unflatten', link, link], ['flatten', undefined, own]] as const) {
+    const s = session(GOOD);
+    s.engine.saved = { theme: 'dark', flat: own };
+    s.engine.settings = { ...s.engine.settings, indent: '2', view: 'format', flat: own };
+    s.engine.load = () => {};
+    let atConvert: unknown;
+    s.engine.setConvert = (p: Dynamic) => {
+      atConvert = s.engine.settings.flat;
+      s.calls.push(['setConvert', p]);
+    };
+    await s.engine.openRequest({ a: { text: '{"a":{"b":1}}' }, view: 'convert', to, flat }, new AbortController().signal);
+    assert.deepEqual(plain(s.calls.filter((c) => c[0] === 'setConvert')), [['setConvert', { target: to }]]);
+    assert.deepEqual(JSON.parse(JSON.stringify(atConvert)), want, `${to}: the options the conversion is made with`);
+    assert.deepEqual(s.engine.saved, { theme: 'dark', flat: own }, 'nothing saved');
+    assert.deepEqual(s.stored, [], 'nothing written to storage');
+    assert.equal(s.engine.presetting, false);
+  }
+});
+
+test('Share on Flatten writes its options into the link, and the link opens with them', async () => {
+  const s = session(GOOD);
+  const flat = { sep: '→', arrays: 'keep', escape: false, depth: 1 };
+  s.engine.settings = { ...s.engine.settings, flat };
+  s.engine.flushLoad = () => {};
+  s.engine.ed2 = { text: '' };
+  const { url } = await s.engine.shareUrl();
+  assert.match(url, /&view=convert&to=flatten&sep=%E2%86%92&arrays=keep&depth=1&escape=0$/);
+  const { parseLink } = load(resolve(__dirname, '../lib/link'));
+  assert.deepEqual(parseLink(new URL(url).hash).flat, flat);
 });
