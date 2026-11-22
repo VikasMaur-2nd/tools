@@ -1336,8 +1336,10 @@ test('the warm-up hands the service worker the page and the app files it loaded,
   } finally {
     performance.getEntriesByType = real;
   }
-  assert.equal(posted.length, 1);
-  assert.deepEqual([...posted[0].urls], [
+  // Two posts: links' code at once (the files only), then the warm-up's (with the pages). Neither has a fetched URL.
+  assert.equal(posted.length, 2);
+  assert.deepEqual([...posted[0].urls], [`${o}/_next/static/chunks/a.js`, `${o}/icon-192.png`]);
+  assert.deepEqual([...posted[1].urls], [
     `${o}/`,
     `${o}/de`,
     `${o}/de/tools/json-schema-validator`,
