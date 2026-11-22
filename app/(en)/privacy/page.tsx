@@ -27,6 +27,7 @@ const WHEN: Record<EventName, string> = {
   huge_shape: 'The Shape panel finishes reading a large file (or is stopped). How many paths it found is sent as a range; the paths themselves, their types, counts and values are never included.',
   huge_gz: 'A compressed .json.gz or .jsonl.gz file is opened (decompressed in your browser), with how it ended. Its name, content and exact size are never included.',
   huge_edit: 'A large file is edited: the kind of edit (set a value, rename, delete, insert, duplicate, edit as text, typing in the Format view, undo, redo, restore) and where it was asked from (tree, table, graph, Format view, menu, keyboard, toolbar, palette, banner). The values, names and paths are never included.',
+  schema_refs_fetched: 'In the Schema view, you ask to fetch the schemas your schema refers to on the web: how many were asked for, fetched and failed, each as a range. The URLs, their sites and the schemas are never included.',
   huge_save: 'A large file is saved: how (in place, as another file, or downloaded), how it ended (saved, stopped, failed, or nothing written because the file picked wasn’t the one opened, writing to it wasn’t allowed, or the opened file had changed), how long it took and its size as a range. Its name and content are never included.',
 };
 
@@ -66,6 +67,9 @@ const PROPS: Record<string, string> = {
   ms: 'time taken, 2 significant digits',
   filtered: 'filtered by conditions',
   paths: 'number of paths, as a range',
+  requested: 'schemas asked for, as a range',
+  fetched: 'schemas fetched, as a range',
+  failed: 'schemas that failed, as a range',
 };
 
 /** Where a property means something else for one event. */
@@ -124,7 +128,11 @@ export default function PrivacyPage() {
             storage, so they are still there when you come back. Clearing the site’s data removes them.
           </li>
           <li>Load from URL, and a link that names a URL, fetch it straight from your browser. That server sees the request; we don’t.</li>
-          <li>The Schema view validates in your browser and never fetches a URL: a $ref to a remote schema is reported as unresolved, not downloaded.</li>
+          <li>
+            The Schema view validates in your browser. A schema that refers to another one on the web ($ref) lists its address, and that schema is
+            fetched only if you ask, straight from your browser, without cookies. That server sees the request; we don’t. What is fetched stays in
+            this tab, never saved or put in a share link.
+          </li>
           <li>
             A share link, or a <Link href="/integrate">View in Tool Kumar</Link> link, carries the document in the part after{' '}
             <code>#</code>. Browsers never send that part to a server, and our analytics remove it.

@@ -1,7 +1,8 @@
 /**
  * Runs JSON-Schema-Test-Suite files (github.com/json-schema-org/JSON-Schema-Test-Suite, MIT) against lib/schema:
- * each test case once per draft it is compatible with, its external schemas as resources, format-assertion cases
- * with format assertion on. Files are parsed with the app's own lossless parser.
+ * each test case once per draft it is compatible with, its external schemas as resources (then the official
+ * meta-schemas that come with the app, as the Schema view has them), format-assertion cases with format assertion on.
+ * Files are parsed with the app's own lossless parser.
  */
 import { readdirSync, readFileSync, existsSync } from 'node:fs';
 import { join } from 'node:path';
@@ -25,6 +26,17 @@ export function compatible(spec: string | undefined, version: number): boolean {
   return ok;
 }
 
+/** The official meta-schemas that come with the app (lib/schema/meta.ts), by their https and http URLs, as SchemaSession has them. */
+export function bundledMeta(): Map<string, JNode> {
+  const file = JSON.parse(readFileSync(join(process.cwd(), 'lib/schema/meta/meta-schemas.json'), 'utf8')) as { schemas: Record<string, unknown> };
+  const out = new Map<string, JNode>();
+  for (const [url, s] of Object.entries(file.schemas)) {
+    const root = parse(JSON.stringify(s)).root!;
+    out.set(url, root).set(url.replace(/^https:/, 'http:'), root);
+  }
+  return out;
+}
+
 const get = (n: JNode, k: string) => (n.t === OBJ ? kids(n).find((c) => c.key === k) : undefined);
 
 export interface CaseResult {
@@ -39,8 +51,8 @@ export interface CaseResult {
   error?: string;
 }
 
-/** Every test of the `.json` files in `dir` (and its optional/ folder) for every draft. */
-export function runSuite(dir: string, drafts = SUITE_DRAFTS): CaseResult[] {
+/** Every test of the `.json` files in `dir` (and its optional/ folder) for every draft. `meta`: resources after each case's own. */
+export function runSuite(dir: string, drafts = SUITE_DRAFTS, meta: Map<string, JNode> = bundledMeta()): CaseResult[] {
   const out: CaseResult[] = [];
   const files: [string, boolean][] = [];
   for (const f of readdirSync(dir).sort()) if (f.endsWith('.json')) files.push([f, false]);
@@ -54,6 +66,7 @@ export function runSuite(dir: string, drafts = SUITE_DRAFTS): CaseResult[] {
       const ext = get(tc, 'externalSchemas');
       const resources = new Map<string, JNode>();
       if (ext) for (const m of kids(ext)) resources.set(m.key as string, m);
+      for (const [url, root] of meta) if (!resources.has(url)) resources.set(url, root);
       const schema = get(tc, 'schema')!;
       for (const draft of drafts) {
         if (!compatible(compat && compat.t === STR ? (compat.v as string) : undefined, draft)) continue;

@@ -3,6 +3,7 @@ import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
 import { SCHEMA_KEYS, SchemaController, readDoc, type SchemaEditor, type SchemaHost } from '../lib/schema/controller';
 import type { Outcome } from '../lib/schema/client';
+import type { Fetched } from '../lib/schema/remote';
 import type { ValidateRequest, ValidateResult } from '../lib/schema/index';
 
 // The Schema view's state (lib/schema/controller.ts): what is saved, and which results show (review round 1,
@@ -58,6 +59,9 @@ class FakeEditor implements SchemaEditor {
 function setup(stored: Record<string, string> = {}, quota = Infinity) {
   const storage = new Map(Object.entries(stored));
   const asked: { req: ValidateRequest; done: (o: Outcome) => void }[] = [];
+  /** Fetches asked for (remote schemas), each answered by the test; and what analytics got. */
+  const fetches: { urls: string[]; signal: AbortSignal; progress: (n: number) => void; answer: (r: Fetched[] | null) => void }[] = [];
+  const tracked: number[][] = [];
   /** Which document is there (the engine's docId). */
   const doc = { id: 1 };
   const host: SchemaHost = {
@@ -77,6 +81,8 @@ function setup(stored: Record<string, string> = {}, quota = Infinity) {
     validator: () => ({ validate: (req, done) => void asked.push({ req, done }), destroy() {} }),
     track: () => undefined,
     report: () => undefined,
+    fetchSchemas: (urls, signal, progress) => new Promise((answer) => void fetches.push({ urls, signal, progress, answer })),
+    trackFetch: (...n) => void tracked.push(n),
   };
   const ctl = new SchemaController(host);
   const ed = new FakeEditor();
@@ -87,7 +93,7 @@ function setup(stored: Record<string, string> = {}, quota = Infinity) {
     doc.id++;
     ctl.docEdited();
   };
-  return { ctl, ed, storage, asked, doc, newDoc };
+  return { ctl, ed, storage, asked, doc, newDoc, fetches, tracked };
 }
 
 /** What is saved: the record's text and name (null: none). */
@@ -413,5 +419,98 @@ test('share links: a link\'s schema is loaded with its name and options (default
   // Undo gives the schema before back (the visitor's own one too).
   ed.undo();
   assert.equal(ed.text, '{"minimum": 1}');
+  ctl.detach();
+});
+
+/** A result whose schema refers to remote schemas it couldn't resolve. */
+const withRemote = (remote: string[] | undefined, valid = false): ValidateResult => ({ ...result(valid), complete: !remote, ...(remote && { remote }) });
+
+test('remote $refs: nothing is fetched until asked; then once, and validated again with what came; failures said and kept', async () => {
+  const { ctl, ed, asked, doc, fetches, tracked } = setup();
+  ctl.attach(ed, null);
+  ed.type('{"$ref": "https://a.test/s.json"}');
+  ctl.setDoc('{}', doc.id);
+  ctl.setOpen(true);
+  await tick();
+  asked[0].done(withRemote(['https://a.test/s.json', 'https://b.test/t.json']));
+  // Results with remote refs don't fetch anything by themselves, however often they come.
+  ctl.setOpts({ formats: true });
+  await tick();
+  asked[1].done(withRemote(['https://a.test/s.json', 'https://b.test/t.json']));
+  assert.equal(fetches.length, 0);
+  assert.equal(asked[1].req.resources, undefined);
+  // Asked: both, once each.
+  ctl.fetchRemote(['https://a.test/s.json', 'https://b.test/t.json', 'https://a.test/s.json']);
+  assert.deepEqual(fetches[0].urls, ['https://a.test/s.json', 'https://b.test/t.json']);
+  fetches[0].progress(1);
+  assert.deepEqual(ctl.state.remote.fetching, { done: 1, count: 2 });
+  fetches[0].answer([{ url: 'https://a.test/s.json', text: '{"type": "object"}' }, { url: 'https://b.test/t.json', failure: { kind: 'cors' } }]);
+  await tick();
+  assert.deepEqual([ctl.state.remote.fetching, ctl.state.remote.failed], [null, { 'https://b.test/t.json': { kind: 'cors' } }]);
+  assert.deepEqual(tracked, [[2, 1, 1]]);
+  // Validated again, with the one that came (the failed one stays unresolved: not fully checked, never valid).
+  assert.equal(asked.length, 3);
+  assert.deepEqual(asked[2].req.resources, { 'https://a.test/s.json': '{"type": "object"}' });
+  asked[2].done(withRemote(['https://b.test/t.json']));
+  // What came is kept for the tab: the next check needs no fetch; a retry asks only for the failed one.
+  ctl.setOpts({ formats: false });
+  await tick();
+  assert.deepEqual(asked[3].req.resources, { 'https://a.test/s.json': '{"type": "object"}' });
+  assert.equal(asked[3].req.resources, asked[2].req.resources, 'the same object: the worker isn\'t sent it again');
+  ctl.fetchRemote(['https://a.test/s.json', 'https://b.test/t.json']);
+  assert.deepEqual(fetches[1].urls, ['https://b.test/t.json']);
+  fetches[1].answer([{ url: 'https://b.test/t.json', text: '{}' }]);
+  await tick();
+  assert.deepEqual(ctl.state.remote.failed, {});
+  ctl.detach();
+});
+
+test('remote $refs: a change while fetching stops it and nothing it brings applies; closing the view too', async () => {
+  const { ctl, ed, asked, doc, fetches } = setup();
+  ctl.attach(ed, null);
+  ed.type('{"$ref": "https://a.test/s.json"}');
+  ctl.setDoc('{}', doc.id);
+  ctl.setOpen(true);
+  await tick();
+  asked[0].done(withRemote(['https://a.test/s.json']));
+  // The schema changes while the fetch is on its way: stopped; its late reply is dropped, never kept for later.
+  ctl.fetchRemote(['https://a.test/s.json']);
+  ed.type('{"$ref": "https://a.test/s.json", "type": "object"}');
+  assert.equal(fetches[0].signal.aborted, true);
+  assert.equal(ctl.state.remote.fetching, null);
+  fetches[0].answer([{ url: 'https://a.test/s.json', text: '{"old": true}' }]);
+  await tick(200);
+  assert.equal(asked[asked.length - 1].req.resources, undefined, 'the late reply was not kept');
+  // The document changes: the same.
+  ctl.fetchRemote(['https://a.test/s.json']);
+  ctl.setDoc('{"x": 1}', doc.id);
+  assert.equal(fetches[1].signal.aborted, true);
+  // The view closes: the same.
+  ctl.fetchRemote(['https://a.test/s.json']);
+  ctl.setOpen(false);
+  assert.equal(fetches[2].signal.aborted, true);
+  // Closed, nothing is fetched.
+  ctl.fetchRemote(['https://a.test/s.json']);
+  assert.equal(fetches.length, 3);
+  ctl.detach();
+});
+
+test('remote $refs: at most 20 a click, the rest on the next; dismissing hides only the list dismissed', async () => {
+  const { ctl, ed, asked, doc, fetches } = setup();
+  ctl.attach(ed, null);
+  ed.type('{}');
+  ctl.setDoc('{}', doc.id);
+  ctl.setOpen(true);
+  await tick();
+  const urls = Array.from({ length: 25 }, (_, i) => `https://a.test/${i}.json`);
+  asked[0].done(withRemote(urls));
+  ctl.fetchRemote(urls);
+  assert.equal(fetches[0].urls.length, 20);
+  fetches[0].answer(fetches[0].urls.map((url) => ({ url, text: '{}' })));
+  await tick();
+  ctl.fetchRemote(urls);
+  assert.deepEqual(fetches[1].urls, urls.slice(20));
+  ctl.dismissRemote(['https://x.test/a']);
+  assert.equal(ctl.state.remote.dismissed, 'https://x.test/a');
   ctl.detach();
 });

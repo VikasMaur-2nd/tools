@@ -2030,7 +2030,7 @@
     ]
   },
   "json-schema-validator": {
-    "hash": "95d2422436de",
+    "hash": "fe537900ec13",
     "title": "Validador JSON Schema: valida JSON en línea",
     "description": "Valida JSON con un JSON Schema: drafts 2020-12, 2019-09, 07, 06 y 04. Ve cada error con su línea, ruta y regla. No se sube nada.",
     "heading": "Validador JSON Schema",
@@ -2093,7 +2093,7 @@
         "heading": "Referencias, esquemas remotos y privacidad",
         "paragraphs": [
           "$ref resuelve JSON Pointers como #/$defs/address, anclas como #address y otros recursos incrustados en el mismo esquema por su $id, también con URI relativas. Un bucle que vuelve a aplicar el mismo esquema al mismo valor se informa en lugar de bloquear la página.",
-          "Las referencias remotas nunca se descargan: un $ref a una URL que no es un recurso de este esquema aparece como sin resolver, y esa parte del documento no se comprueba, así que un documento sin otros errores muestra Comprobación incompleta en lugar de Válido. Lo mismo ocurre con una palabra clave cuyo valor está roto. Para usar ese esquema, añádelo en $defs con su $id; las referencias a esa URL se resuelven entonces de forma local. Tampoco se cargan los metaesquemas oficiales: el validador comprueba él mismo el valor de cada palabra clave que conoce."
+          "Un $ref a un esquema en la web solo se descarga cuando lo pides. Hasta entonces aparece como sin resolver y esa parte del documento no se comprueba, así que un documento sin otros errores muestra Comprobación incompleta en lugar de Válido; lo mismo ocurre con una palabra clave cuyo valor está roto. Los resultados muestran cada dirección con un botón Descargar esquemas referenciados, que las descarga directamente desde tu navegador, sin cookies, y vuelve a validar; las direcciones a las que hacen referencia esos esquemas se muestran para otro clic. Los esquemas descargados se quedan en esa pestaña y nunca se guardan ni se comparten. Una dirección que falla dice por qué (casi siempre un servidor que no permite solicitudes entre orígenes) y sigue sin resolver. Para trabajar sin descargar nada, añade el esquema en $defs con su $id: las referencias a esa URL se resuelven entonces de forma local. Los metaesquemas oficiales de todos los drafts compatibles, con los vocabularios de 2019-09 y 2020-12, vienen con el validador, así que un $ref a cualquiera de ellos se resuelve por su dirección http o https sin descargar nada, incluso sin conexión. Para comprobar un esquema contra su draft, pégalo como documento y usa {\"$ref\": \"https://json-schema.org/draft/2020-12/schema\"} como esquema. Tu propio esquema se comprueba sin ellos: el validador conoce los valores válidos de cada palabra clave que admite."
         ]
       },
       {

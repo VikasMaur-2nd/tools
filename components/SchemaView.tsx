@@ -21,6 +21,7 @@ import { formatDoc } from '@/lib/json/format';
 import { parse } from '@/lib/json/parser';
 import { SchemaClient } from '@/lib/schema/client';
 import { SchemaController, readDoc, type SchemaState } from '@/lib/schema/controller';
+import { REMOTE_MAX_BYTES, REMOTE_MAX_COUNT, REMOTE_TIMEOUT, fetchSchemas, type FetchFailure } from '@/lib/schema/remote';
 import { DRAFTS, DRAFT_NAME, type Draft } from '@/lib/schema/drafts';
 import type { InstanceError, Loc, Problem, ValidateResult } from '@/lib/schema/index';
 import type { Portal } from '@/lib/huge/kit';
@@ -68,8 +69,13 @@ const ctl = new SchemaController({
   // (Whether the document was valid, the check complete, and its errors as a number rounded to two digits.)
   track: (feature, on, level) => track('feature_used', { feature, on, level }),
   report: (e) => reportError(e),
+  fetchSchemas: (urls, signal, progress) => fetchSchemas(urls, signal, progress),
+  // (Counts as ranges: lib/analytics/events.ts countBucket; one click fetches at most 20.)
+  trackFetch: (requested, fetched, failed) => track('schema_refs_fetched', { requested: range(requested), fetched: range(fetched), failed: range(failed) }),
 });
 const toast = (msg: string, kind: 'ok' | 'err' | 'info') => act((e) => e.toast(msg, kind));
+/** A count as analytics' ranges (lib/analytics/events.ts countBucket). */
+const range = (n: number) => (n <= 0 ? '0' : n < 10 ? '1-9' : n < 100 ? '10-99' : '100-999');
 const useCtl = () => useSyncExternalStore(ctl.subscribe, ctl.get, ctl.get);
 /** The schema editor (the app's editor class: ctl.ed is it). */
 const schemaEd = () => ctl.ed as Editor | null;
@@ -495,6 +501,7 @@ const RowView = memo(function RowView({ row, i, sel, src }: { row: Row; i: numbe
             {t(p.warn ? 'Schema warning' : 'Schema error')}
             {p.reached && `${t(' · ')}${t('not applied to the document')}`}
             {p.loc && `${t(' · ')}${t('Ln {line}, Col {col}', { line: p.loc.line, col: p.loc.col })}`}
+            {p.doc && `${t(' · ')}${t('in {url}', { url: p.doc })}`}
           </span>
         </span>
       </div>
@@ -518,6 +525,73 @@ const RowView = memo(function RowView({ row, i, sel, src }: { row: Row; i: numbe
     </div>
   );
 });
+
+/** Why a remote schema wasn't fetched, in the words the app uses when it fetches a document (lib/engine/engine.ts fetchText). */
+function failText(f: FetchFailure, t: T): string {
+  switch (f.kind) {
+    case 'status':
+      return t('Request failed: {status}', { status: `${f.status} ${f.statusText}`.trim() });
+    case 'cors':
+      return t("Couldn't fetch. The server must allow cross-origin requests (CORS).");
+    case 'mixed':
+      return t('Browsers block http:// links on an https page. Try the https:// address.');
+    case 'offline':
+      return t("You're offline. Connect to the internet and try again.");
+    case 'dropped':
+      return t('The connection dropped before the whole file arrived. Try again.');
+    case 'timeout':
+      return t('No answer within {seconds} seconds. Try again.', { seconds: t.num(REMOTE_TIMEOUT / 1000) });
+    case 'tooBig':
+      return t('Larger than {size}: not fetched.', { size: t.bytes(REMOTE_MAX_BYTES) });
+    case 'notJson':
+      return t("It isn't JSON, so it isn't a schema.");
+    case 'notHttp':
+      return t('Enter a valid http(s) URL');
+    default:
+      return t("Couldn't reach the server. Check the address or try again later.");
+  }
+}
+
+/**
+ * The remote schemas the result's schema refers to (ValidateResult.remote), offered for fetching: nothing is fetched
+ * until the visitor asks (lib/schema/controller.ts fetchRemote). Their URLs are the schema's content: PRIVATE.
+ */
+function RemoteRefs({ urls }: { urls: string[] }) {
+  const t = useT();
+  const { remote } = useCtl();
+  if (remote.dismissed === urls.join(' ')) return null;
+  const f = remote.fetching;
+  return (
+    <div className="sch-remote" role="group" aria-label={t('Schemas this schema refers to')}>
+      <div className="sch-remote-head">
+        <Icon name="globe" size={15} />
+        <p>
+          <b className={PRIVATE}>{t.n(urls.length, 'This schema refers to {n} schema on the web.', 'This schema refers to {n} schemas on the web.')}</b>{' '}
+          {t('Nothing is fetched until you ask, and what is fetched stays in this tab.')}
+          {urls.length > REMOTE_MAX_COUNT && ` ${t('Up to {n} are fetched at a time.', { n: t.num(REMOTE_MAX_COUNT) })}`}
+        </p>
+        <button type="button" className="btn sm icon" aria-label={t('Dismiss')} data-tip={t('Dismiss')} onClick={() => ctl.dismissRemote(urls)}>
+          <Icon name="x" size={14} />
+        </button>
+      </div>
+      <ul className={`sch-urls ${PRIVATE}`}>
+        {urls.map((u) => (
+          <li key={u}>
+            <span className="sch-url">{u}</span>
+            {remote.failed[u] && <span className="sch-fail">{failText(remote.failed[u], t)}</span>}
+          </li>
+        ))}
+      </ul>
+      <button type="button" className="btn sm sch-fetch" disabled={!!f} onClick={() => ctl.fetchRemote(urls)}>
+        {f && <i className="spin" />}
+        {f ? t('Fetching {done} of {count}…', { done: t.num(f.done), count: t.num(f.count) }) : t('Fetch referenced schemas')}
+      </button>
+      <span className="sr-only" aria-live="polite">
+        {f ? t('Fetching {done} of {count}…', { done: t.num(f.done), count: t.num(f.count) }) : ''}
+      </span>
+    </div>
+  );
+}
 
 function Empty({ icon, title, text, children, tone }: { icon: 'braces' | 'alert' | 'check' | 'file'; title: string; text?: ReactNode; children?: ReactNode; tone?: 'ok' | 'err' }) {
   return (
@@ -690,7 +764,7 @@ const Panel = memo(function Panel() {
           <li>{t('Drafts 2020-12, 2019-09, 07, 06 and 04, picked by $schema')}</li>
           <li>{t('Each error with its JSON Pointer, line and column')}</li>
           <li>{t('Exact numbers: multipleOf 0.01 and big integers have no rounding error')}</li>
-          <li>{t('Nothing is uploaded, and remote $ref URLs are never fetched')}</li>
+          <li>{t('Nothing is uploaded, and a remote $ref is fetched only when you ask')}</li>
         </ul>
         {actions}
       </Empty>
@@ -781,6 +855,7 @@ const Panel = memo(function Panel() {
           ))}
         </div>
       )}
+      {r?.remote && !stale && <RemoteRefs urls={r.remote} />}
       <div className="sch-lw">
         {showList && (
           <div
