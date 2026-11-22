@@ -3,7 +3,8 @@
 // to one build at a time (a deploy switches it), can 404 single files, and goes offline by cutting every
 // connection. Build A is `default`, A′ is `redeploy` (the same code, a few chunks with new hashes).
 // Ported from ~/.cache/rv/c/sw-offline.mjs: 40 default checks plus 3 swupdate and 8 upgrade checks.
-// Four added preflight assertions bring the committed suite to 55 checks per engine.
+// Four added preflight assertions bring those to 55 checks per engine; the deploy clean-up scenarios
+// (toolpage: a deploy seen only on a tool page; rollback: A, A′, then A again) add 29: 84.
 // Every wait is on the worker (a probe the proxy adds to /sw.js reports its unfinished waitUntil work) or
 // on the cache, never on time.
 import { defaults } from '../../lib/api.mjs';
@@ -358,6 +359,117 @@ test('upgrade: the frozen production worker upgrades without breaking its cached
     await checkErrors(t, 'upgrade');
   } finally {
     t.log('worker responses', proxy.net.workers);
+    proxy.close();
+  }
+});
+
+test('toolpage: a deploy seen on a tool page brings the shell along, keeps the old tab whole, then cleans up', { variant: 'redeploy' }, async (t) => {
+  const A = (await serveVariant('default')).base;
+  const proxy = await startProxy({ A, A2: t.base });
+  const TOOL = '/tools/json-validator';
+  try {
+    const [a, a2, aTool, a2Tool] = await Promise.all([closure(A), closure(t.base), closure(A, TOOL), closure(t.base, TOOL)]);
+    const newFiles = new Set([...a2.all, ...a2Tool.all]);
+    const onlyA = [...new Set([...a.all, ...aTool.all])].filter((p) => !newFiles.has(p));
+    t.assert(onlyA.length, "build A has files the redeploy doesn't", onlyA);
+    // The visitor only ever opens the tool page: '/' comes with the worker, at build A.
+    await t.context.addInitScript(WATCH_POSTS);
+    await t.page.goto(proxy.origin + TOOL, { waitUntil: 'load' });
+    await swIdle(t.page, { posted: true, timeout: 90_000 });
+    const oldTab = t.page;
+    t.assert(await waitInCache(oldTab, ['/', TOOL]), 'toolpage: the tool page and the shell are cached');
+    const oldFiles = (await cacheKeys(oldTab)).filter((p) => p.startsWith('/_next/static/'));
+
+    proxy.deploy('A2');
+    const visitor = await t.context.newPage();
+    await visitor.goto(proxy.origin + TOOL, { waitUntil: 'load' });
+    t.check(await newShell(t, visitor, a2.named), 'toolpage: the shell follows the tool page to the new build, never opened');
+    await swIdle(visitor, { posted: true, timeout: 90_000 });
+    proxy.offline();
+    const lost = await unreachable(oldTab, oldFiles);
+    t.check(!lost.length, 'toolpage offline: the old tab still gets every file of its build', `${lost.length} missing ${lost.slice(0, 3).join(' ')}`);
+
+    // The old tab closes while the new build's tab stays open: build A's leftovers go at the next visit.
+    await Promise.all([quiet(oldTab), quiet(visitor)]);
+    await oldTab.close();
+    proxy.offline(false);
+    const later = await t.context.newPage();
+    await later.goto(proxy.origin + TOOL, { waitUntil: 'load' });
+    await swIdle(later, { posted: true });
+    const left = (await cacheKeys(later)).filter((p) => onlyA.includes(p));
+    t.check(!left.length, "toolpage: once the old tab is closed, the old build's files are deleted (a new build's tab still open)", `${left.length} left of ${onlyA.length}: ${left.slice(0, 3).join(' ')}`);
+    const missing = await missingFromCache(later, a2Tool.all);
+    t.check(!missing.length, "toolpage: every file of the new build's tool page is cached", missing.slice(0, 3));
+    proxy.offline();
+    const off = await t.context.newPage();
+    const o = await opened(off, proxy.origin, TOOL);
+    t.check(o.ok && o.tool === 1, 'toolpage offline after cleanup: the tool page opens', o);
+    await features(t, off, 'toolpage offline after cleanup');
+    const home = await opened(off, proxy.origin, '/');
+    t.check(home.ok && home.tool === 1, 'toolpage offline after cleanup: the shell opens', home);
+    await checkErrors(t, 'toolpage');
+  } finally {
+    proxy.close();
+  }
+});
+
+test("rollback: a deploy back to the previous build keeps both builds' tabs whole offline, then each build's leftovers go", { variant: 'redeploy' }, async (t) => {
+  const A = (await serveVariant('default')).base;
+  const proxy = await startProxy({ A, A2: t.base });
+  try {
+    const [a, a2] = await Promise.all([closure(A), closure(t.base)]);
+    const onlyA = a.all.filter((p) => !a2.all.includes(p));
+    const onlyA2 = a2.all.filter((p) => !a.all.includes(p));
+    await firstVisit(t, proxy);
+    const tabA = t.page;
+    // The redeploy: a visit to '/' brings it in (it gets build A's shell meanwhile); reloaded, that tab runs A2.
+    proxy.deploy('A2');
+    const tabA2 = await t.context.newPage();
+    await tabA2.goto(proxy.origin + '/', { waitUntil: 'load' });
+    t.assert(await newShell(t, tabA2, a2.named), 'rollback: the redeploy is cached');
+    await quiet(tabA2);
+    await tabA2.reload({ waitUntil: 'load' });
+    await swIdle(tabA2, { posted: true, timeout: 90_000 });
+    // Rolled back: build A again, seen on '/' by another tab. Build A's files, retired for build A's tab, are the shell's again.
+    proxy.deploy('A');
+    const back = await t.context.newPage();
+    await back.goto(proxy.origin + '/', { waitUntil: 'load' });
+    t.check(await newShell(t, back, a.named), 'rollback: the previous build is the cached shell again');
+    await swIdle(back);
+    proxy.offline();
+    const lostA = await unreachable(tabA, a.all);
+    t.check(!lostA.length, "rollback offline: build A's tab still gets every file of its build", lostA.slice(0, 3));
+    const lostA2 = await unreachable(tabA2, a2.all);
+    t.check(!lostA2.length, "rollback offline: the redeploy's tab still gets every file of its build", lostA2.slice(0, 3));
+
+    // Build A's tabs close: build A stays (the cached shell needs it), and so does the redeploy while its tab is open.
+    await Promise.all([quiet(tabA), quiet(back)]);
+    await tabA.close();
+    await back.close();
+    proxy.offline(false);
+    const p1 = await t.context.newPage();
+    await p1.goto(proxy.origin + '/', { waitUntil: 'load' });
+    await swIdle(p1, { posted: true });
+    const keys = new Set(await cacheKeys(p1));
+    t.check(a.all.every((p) => keys.has(p)), 'rollback: build A, needed by the cached shell again, stays whole', a.all.filter((p) => !keys.has(p)).slice(0, 3));
+    t.check(onlyA2.every((p) => keys.has(p)), "rollback: the redeploy's files stay while its tab is open", onlyA2.filter((p) => !keys.has(p)).slice(0, 3));
+    // Its tab closes: they go.
+    await quiet(tabA2);
+    await tabA2.close();
+    const p2 = await t.context.newPage();
+    await p2.goto(proxy.origin + '/', { waitUntil: 'load' });
+    await swIdle(p2, { posted: true });
+    const after = await cacheKeys(p2);
+    const left = after.filter((p) => onlyA2.includes(p));
+    t.check(!left.length, "rollback: once its tab is closed, the redeploy's files are deleted", `${left.length} left of ${onlyA2.length}`);
+    t.check(!after.includes('/sw.js?retired') && onlyA.every((p) => after.includes(p)), 'rollback: build A is whole and no retired record is left');
+    proxy.offline();
+    const off = await t.context.newPage();
+    const o = await opened(off, proxy.origin, '/');
+    t.check(o.ok && o.tool === 1, 'rollback offline after cleanup: / opens', o);
+    await features(t, off, 'rollback offline after cleanup');
+    await checkErrors(t, 'rollback');
+  } finally {
     proxy.close();
   }
 });
