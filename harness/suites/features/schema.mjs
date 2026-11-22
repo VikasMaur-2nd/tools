@@ -20,6 +20,23 @@ const selected = (page) =>
     return a instanceof HTMLTextAreaElement ? `${a.id}:${a.value.slice(a.selectionStart, a.selectionEnd)}` : `${a?.tagName}`;
   });
 
+/** Opens the Schema view with Alt+7 and waits for its schema editor (the view's code loads the first time it opens). */
+async function openSchema(page) {
+  await page.keyboard.press('Alt+7');
+  return !!(await until(page, () => [...document.querySelectorAll('#schema-input')].some((el) => el.offsetParent), null, { timeout: 20_000 }));
+}
+
+/** Replaces the schema editor's text as typing would, once the editor is there. */
+async function setSchema(page, text) {
+  await until(page, () => [...document.querySelectorAll('#schema-input')].some((el) => el.offsetParent), null, { timeout: 20_000 });
+  await page.evaluate((x) => {
+    const ta = [...document.querySelectorAll('#schema-input')].find((el) => el.offsetParent);
+    ta.focus();
+    ta.select();
+    document.execCommand('insertText', false, x);
+  }, text);
+}
+
 const FIXED = '{\n  "id": 7,\n  "name": "Ada",\n  "email": "ada@example.com",\n  "age": 36,\n  "role": "admin",\n  "tags": ["admin"],\n  "balance": 19.99\n}\n';
 
 test('the validator page: six errors, jumps, keyboard, fixed to Valid, undo, a broken schema, formats', async (t) => {
@@ -352,13 +369,8 @@ test('Share from the Schema view carries the schema and its options; the link op
   const { page } = t;
   await t.open('/');
   t.check(await setDoc(page, '{"id": "7", "email": "not-an-email"}'), 'a document');
-  await page.keyboard.press('Alt+7');
-  await page.evaluate((text) => {
-    const ta = document.getElementById('schema-input');
-    ta.focus();
-    ta.select();
-    document.execCommand('insertText', false, text);
-  }, '{\n  "properties": {\n    "id": { "type": "integer" },\n    "email": { "format": "email" }\n  }\n}\n');
+  t.check(await openSchema(page), 'the Schema view opens');
+  await setSchema(page, '{\n  "properties": {\n    "id": { "type": "integer" },\n    "email": { "format": "email" }\n  }\n}\n');
   await page.locator('.sch-fmt').click();
   t.check(!!(await waitState(page, /^2 errors/)), 'two errors, formats checked', await state(page));
   await resetClip(page);
@@ -401,13 +413,8 @@ test('input in another format: errors show and select their places in it, YAML a
     ta.select();
     document.execCommand('insertText', false, text);
   }, yaml);
-  await page.keyboard.press('Alt+7');
-  await page.evaluate((text) => {
-    const ta = document.getElementById('schema-input');
-    ta.focus();
-    ta.select();
-    document.execCommand('insertText', false, text);
-  }, '{"properties": {"age": {"type": "integer"}, "tags": {"items": {"type": "string"}}}}');
+  t.check(await openSchema(page), 'the Schema view opens');
+  await setSchema(page, '{"properties": {"age": {"type": "integer"}, "tags": {"items": {"type": "string"}}}}');
   t.check(!!(await waitState(page, /^2 errors/)), 'two errors', await state(page));
   const at = await until(page, (s) => {
     const all = [...document.querySelectorAll(s)].map((r) => r.querySelector('.sch-at')?.textContent ?? '');
@@ -428,12 +435,7 @@ test('input in another format: errors show and select their places in it, YAML a
     ta.select();
     document.execCommand('insertText', false, text);
   }, 'id,email\nx1,a@b.c\n2\n');
-  await page.evaluate((text) => {
-    const ta = document.getElementById('schema-input');
-    ta.focus();
-    ta.select();
-    document.execCommand('insertText', false, text);
-  }, '{"items": {"properties": {"id": {"type": "integer"}, "email": {"type": "string"}}}}');
+  await setSchema(page, '{"items": {"properties": {"id": {"type": "integer"}, "email": {"type": "string"}}}}');
   const csv = await until(page, (s) => {
     const all = [...document.querySelectorAll(s)].map((r) => r.querySelector('.sch-at')?.textContent ?? '');
     return all.length === 2 && all.every((x) => /Ln \d/.test(x)) && all;
@@ -460,13 +462,8 @@ test('remote $refs: nothing fetched until asked; then each schema once, what it 
   });
   await t.open('/');
   t.check(await setDoc(page, '{"id": "x"}'), 'a document');
-  await page.keyboard.press('Alt+7');
-  await page.evaluate((text) => {
-    const ta = document.getElementById('schema-input');
-    ta.focus();
-    ta.select();
-    document.execCommand('insertText', false, text);
-  }, JSON.stringify({ allOf: [{ $ref: 'https://schemas.example.test/user.json' }, { $ref: 'https://schemas.example.test/missing.json#/$defs/x' }] }));
+  t.check(await openSchema(page), 'the Schema view opens');
+  await setSchema(page, JSON.stringify({ allOf: [{ $ref: 'https://schemas.example.test/user.json' }, { $ref: 'https://schemas.example.test/missing.json#/$defs/x' }] }));
   t.check(!!(await waitState(page, /^Not fully checked/)), 'not fully checked', await state(page));
   const urls = () => page.evaluate(() => [...document.querySelectorAll('.sch-remote .sch-urls li')].map((li) => li.textContent));
   const offered = await until(page, () => document.querySelectorAll('.sch-remote .sch-urls li').length === 2, null, { timeout: 5000 });
@@ -509,17 +506,10 @@ test('official meta-schemas: a $ref to one resolves from the app\'s own copy, by
   await t.open('/');
   // A schema as the document: a type that doesn't exist, a negative minLength in a subschema.
   t.check(await setDoc(page, '{"type": "objekt", "properties": {"a": {"minLength": -1}}}'), 'a document');
-  await page.keyboard.press('Alt+7');
-  const setSchema = (text) =>
-    page.evaluate((x) => {
-      const ta = document.getElementById('schema-input');
-      ta.focus();
-      ta.select();
-      document.execCommand('insertText', false, x);
-    }, text);
+  t.check(await openSchema(page), 'the Schema view opens');
   const rows = () => page.evaluate((sel) => [...document.querySelectorAll(sel)].map((r) => r.textContent), ROWS);
   for (const url of ['http://json-schema.org/draft-07/schema#', 'https://json-schema.org/draft/2020-12/schema']) {
-    await setSchema(JSON.stringify({ $ref: url }));
+    await setSchema(page, JSON.stringify({ $ref: url }));
     t.check(!!(await waitState(page, /^2 errors/, 20_000)), `${url}: both errors, the subschema's too`, await state(page));
     const list = await rows();
     t.check(list.some((r) => r.includes('/type')) && list.some((r) => r.includes('/properties/a/minLength')), `${url}: at /type and /properties/a/minLength`, list);
