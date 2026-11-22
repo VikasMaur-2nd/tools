@@ -5,9 +5,10 @@ import { LinkTooLarge, MAX_DOCUMENT, decodeDoc, linkReach, encodeDoc, linkHash, 
 
 import ts from 'typescript';
 import { HANDOFF_SNIPPET, HANDOFF_SNIPPET_TS, LINK_SNIPPET, LINK_SNIPPET_TS } from '../app/(en)/integrate/snippets';
+import { FLAT_DEFAULTS } from '../lib/convert/flat';
 
 /** The function /integrate tells other sites to paste: it must build exactly what the viewer reads. */
-type LinkOptions = { compare?: unknown; schema?: unknown; view?: string; to?: string };
+type LinkOptions = { compare?: unknown; schema?: unknown; view?: string; to?: string; sep?: string; arrays?: string; depth?: number; escape?: boolean };
 const toolKumarLink = new Function(`${LINK_SNIPPET}\nreturn toolKumarLink;`)() as (json: unknown, o?: LinkOptions) => Promise<string>;
 
 const data = (s: LinkSource | undefined) => (s && 'data' in s ? s.data : assert.fail('expected encoded data'));
@@ -96,9 +97,9 @@ test('the published link function builds links the viewer reads', async () => {
 test('the published handoff function is plain JavaScript that sends the documented message', () => {
   const openInToolKumar = new Function(`${HANDOFF_SNIPPET}\nreturn openInToolKumar;`)();
   assert.equal(typeof openInToolKumar, 'function');
-  assert.match(HANDOFF_SNIPPET, /postMessage\(\{ toolkumar: 'open', a, b, view: v, to \}, origin\)/);
+  assert.match(HANDOFF_SNIPPET, /postMessage\(\{ toolkumar: 'open', a, b, view: v, to, sep, arrays, depth, escape \}, origin\)/);
   assert.match(HANDOFF_SNIPPET, /const b = text\(schema === undefined \? compare : schema\);\n\s*const v = schema === undefined \? view : 'schema';/);
-  assert.ok(readHandoff({ toolkumar: 'open', a: '[1]', b: undefined, view: 'table', to: undefined }));
+  assert.ok(readHandoff({ toolkumar: 'open', a: '[1]', b: undefined, view: 'table', to: undefined, sep: undefined, arrays: undefined, depth: undefined, escape: undefined }));
 });
 
 /** Parsed library files (lib.dom.d.ts alone is ~2 MB), shared by every typeErrors call. */
@@ -135,6 +136,85 @@ test('the TypeScript link function builds the same links as the JavaScript one',
   const tsLink = new Function(js)() as typeof toolKumarLink;
   const doc = { id: 1, text: '日本語 👋', big: [1, 2, 3] };
   assert.equal(await tsLink(doc, { compare: [1], view: 'tree' }), await toolKumarLink(doc, { compare: [1], view: 'tree' }));
+});
+
+// ── Flatten's options ─────────────────────────────────────────────────────────
+
+const SEPARATORS = ['/', '_', '__', '->', '&', '=', '#', '%', '%%', '%FF', '+', ' ', '?', '&sep=x', '日本', '🔹', 'é', '"', '\'', '<&>'];
+
+test('links to flatten and unflatten carry their options: only those that aren\'t the defaults, any separator', async () => {
+  // (A link kept the target but not the separator, array indexes, depth or escapes.)
+  const doc = { text: '{"a":{"b":1}}' };
+  const flat = (f: Partial<typeof FLAT_DEFAULTS>) => ({ ...FLAT_DEFAULTS, ...f });
+  for (const to of ['flatten', 'unflatten'] as const) {
+    for (const sep of SEPARATORS) {
+      const o = flat({ sep, arrays: 'dot', depth: 2, escape: false });
+      const hash = await linkHash({ a: doc, view: 'convert', to, flat: o });
+      const back = parseLink(hash);
+      assert.ok(back && typeof back === 'object', hash);
+      assert.deepEqual(back.flat, o, `${to} ${JSON.stringify(sep)}: ${hash}`);
+      assert.equal(back.to, to);
+      assert.equal(await decodeDoc(data(back.a)), doc.text, 'the document is untouched by the options after it');
+    }
+    // The defaults aren't written: a link with them is as short as before.
+    const plain = await linkHash({ a: doc, view: 'convert', to, flat: FLAT_DEFAULTS });
+    assert.equal(plain, await linkHash({ a: doc, view: 'convert', to }));
+    assert.doesNotMatch(plain, /sep=|arrays=|depth=|escape=/);
+    assert.deepEqual((parseLink(plain) as { flat?: unknown }).flat, FLAT_DEFAULTS, 'and it opens with the defaults');
+    // Each option on its own.
+    assert.match(await linkHash({ a: doc, view: 'convert', to, flat: flat({ arrays: 'keep' }) }), /&to=\w+&arrays=keep$/);
+    assert.match(await linkHash({ a: doc, view: 'convert', to, flat: flat({ depth: 3 }) }), /&to=\w+&depth=3$/);
+    assert.match(await linkHash({ a: doc, view: 'convert', to, flat: flat({ escape: false }) }), /&to=\w+&escape=0$/);
+    assert.match(await linkHash({ a: doc, view: 'convert', to, flat: flat({ sep: '&' }) }), /&to=\w+&sep=%26$/);
+  }
+  // Other targets and views carry none, and links without them parse as before.
+  for (const r of [{ view: 'convert', to: 'go' }, { view: 'tree', to: 'flatten' }] as const) {
+    const hash = await linkHash({ a: doc, ...r, flat: flat({ sep: '/', depth: 1 }) });
+    assert.doesNotMatch(hash, /sep=|depth=/);
+    assert.equal('flat' in (parseLink(hash) as object), false);
+  }
+  assert.deepEqual(parseLink('#a=abc&view=convert&to=go&sep=%2F&depth=2'), { a: { data: 'abc' }, b: undefined, view: 'convert', to: 'go' });
+  // A separator that can't be percent-encoded (a lone surrogate) is left out, never an error; so is one being typed ('').
+  assert.doesNotMatch(await linkHash({ a: doc, view: 'convert', to: 'flatten', flat: flat({ sep: '\ud800' }) }), /sep=/);
+  assert.doesNotMatch(await linkHash({ a: doc, view: 'convert', to: 'flatten', flat: flat({ sep: '' }) }), /sep=/);
+});
+
+test('flatten options in a link: invalid or unknown values are ignored, never an error', () => {
+  const opts = (hash: string) => (parseLink('#a=abc&view=convert&to=flatten' + hash) as { flat: unknown }).flat;
+  assert.deepEqual(opts(''), FLAT_DEFAULTS);
+  for (const bad of ['&sep=', '&sep=%', '&sep=%E0%A4%A', '&sep=%ZZ', '&sep=a1', '&sep=%5B', '&sep=%5C', '&sep=123456789', '&sep=abcdefghi', '&arrays=Dot', '&arrays=none', '&depth=0', '&depth=4', '&depth=-1', '&depth=1.5', '&depth=02', '&depth=x', '&escape=false', '&escape=no', '&escape=1', '&escape=', '&nope=1']) {
+    assert.deepEqual(opts(bad), FLAT_DEFAULTS, bad);
+  }
+  assert.deepEqual(opts('&sep=%2F&arrays=dot&depth=1&escape=0'), { sep: '/', arrays: 'dot', depth: 1, escape: false });
+  // As written: "+" is a plus; the first of two is taken; a hand-written plain separator works.
+  assert.deepEqual(opts('&sep=+'), { ...FLAT_DEFAULTS, sep: '+' });
+  assert.deepEqual(opts('&sep=::&sep=/'), { ...FLAT_DEFAULTS, sep: '::' });
+  assert.deepEqual(opts('&arrays=keep&arrays=dot'), { ...FLAT_DEFAULTS, arrays: 'keep' });
+  // Order doesn't matter, and the options may come before the target.
+  assert.deepEqual((parseLink('#depth=2&a=abc&sep=%2F&view=convert&to=unflatten') as { flat: unknown }).flat, { ...FLAT_DEFAULTS, sep: '/', depth: 2 });
+});
+
+test('the published link functions carry flatten\'s options as the viewer reads them', async () => {
+  const js = ts.transpileModule(`${LINK_SNIPPET_TS}\nreturn toolKumarLink;`, { compilerOptions: { target: ts.ScriptTarget.ES2022 } }).outputText;
+  const tsLink = new Function(js)() as typeof toolKumarLink;
+  for (const sep of SEPARATORS) {
+    const o = { view: 'convert', to: 'flatten', sep, arrays: 'dot', depth: 2, escape: false };
+    const url = await toolKumarLink('{"a":{"b":1}}', o);
+    assert.equal(await tsLink('{"a":{"b":1}}', o), url);
+    assert.deepEqual((parseLink(new URL(url).hash) as { flat: unknown }).flat, { sep, arrays: 'dot', depth: 2, escape: false }, sep);
+  }
+  assert.deepEqual(typeErrors(`${LINK_SNIPPET_TS}\nvoid toolKumarLink({}, { view: 'convert', to: 'flatten', sep: '/', arrays: 'keep', depth: 3, escape: false });`), []);
+  assert.ok(typeErrors(`${LINK_SNIPPET_TS}\nvoid toolKumarLink({}, { view: 'convert', to: 'flatten', arrays: 'none' });`).length);
+  assert.ok(typeErrors(`${LINK_SNIPPET_TS}\nvoid toolKumarLink({}, { view: 'convert', to: 'flatten', depth: 4 });`).length);
+});
+
+test('handoff messages carry flatten\'s options too: a number for depth, a boolean for escape; invalid ones ignored', () => {
+  const open = (extra: Record<string, unknown>, to = 'flatten') => readHandoff({ toolkumar: 'open', a: '[1]', view: 'convert', to, ...extra }) as { flat?: unknown };
+  assert.deepEqual(open({ sep: '&=#%日本', arrays: 'keep', depth: 3, escape: false }).flat, { sep: '&=#%日本', arrays: 'keep', depth: 3, escape: false });
+  assert.deepEqual(open({}).flat, FLAT_DEFAULTS);
+  assert.deepEqual(open({ sep: 'a1', arrays: 'none', depth: '2', escape: 'false' }).flat, FLAT_DEFAULTS);
+  assert.deepEqual(open({ sep: 7, depth: 2.5, escape: 0 }).flat, FLAT_DEFAULTS);
+  assert.equal('flat' in open({ sep: '/' }, 'go'), false);
 });
 
 test('link reach follows the measured browser limits (warnings only)', () => {
@@ -215,7 +295,7 @@ test('the published functions open the Schema view with a schema option', async 
   );
   void fn({ id: 1 }, { schema: { required: ['id'] } });
   listeners[0]({ source: tab, origin: 'https://tools.vikasmaur.com', data: { toolkumar: 'ready', version: 1 } });
-  assert.deepEqual(sent, [{ toolkumar: 'open', a: '{"id":1}', b: '{"required":["id"]}', view: 'schema', to: undefined }]);
+  assert.deepEqual(sent, [{ toolkumar: 'open', a: '{"id":1}', b: '{"required":["id"]}', view: 'schema', to: undefined, sep: undefined, arrays: undefined, depth: undefined, escape: undefined }]);
   assert.ok(readHandoff(sent[0]) && typeof readHandoff(sent[0]) === 'object');
   listeners[0]({ source: tab, origin: 'https://tools.vikasmaur.com', data: { toolkumar: 'opened' } });
 });

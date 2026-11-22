@@ -73,8 +73,11 @@ export const validSep = (s: unknown): s is string => typeof s === 'string' && s.
 
 /** An array index in a path: 0, or 1 to 999,999,999 without leading zeros. */
 const INDEX = /^(?:0|[1-9]\d{0,8})$/;
-/** Missing array items unflatten fills with null, at most (a stray `a[999999999]` must not make a billion). */
-const HOLES = 1_000_000;
+/**
+ * Missing array items unflatten fills with null, at most, in all (a stray `a[999999999]` must not make a billion).
+ * An object, so that tests can lower it and reach it with small documents (tests/flatten.test.ts); never changed here.
+ */
+export const GAPS = { budget: 1_000_000 };
 
 export function flatOptions(o?: Partial<FlatOptions>): FlatOptions {
   return {
@@ -330,7 +333,7 @@ class Flattener {
   /** Items done, for yielding now and then. */
   n = 0;
   /** Without escapes: unflatten's budget of missing items, spent as it would spend it (see misread). */
-  private budget = HOLES;
+  private budget = GAPS.budget;
   /**
    * Without escapes: unflatten itself, placing the keys of every record from the first one whose paths look misread
    * on (see moved). Before it, no record spent unflatten's budget of missing items (nothing becomes an array with
@@ -664,7 +667,7 @@ class Unflattener {
   private deep = false;
   private holes = 0;
   private sparse = 0;
-  private budget = HOLES;
+  private budget = GAPS.budget;
   /** A key read as a path of several parts; a value with something inside. */
   private paths = false;
   private nested = false;

@@ -2,7 +2,7 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import { parse, type JNode } from '../lib/json/parser';
 import { stringify } from '../lib/json/format';
-import { FLAT_DEFAULTS, flatOptions, flatten, flattenSteps, pathParts, unflatten, unflattenSteps, validSep, type FlatArrays, type FlatOptions, type FlatResult, type Part, type Steps } from '../lib/convert/flat';
+import { FLAT_DEFAULTS, GAPS, flatOptions, flatten, flattenSteps, pathParts, unflatten, unflattenSteps, validSep, type FlatArrays, type FlatOptions, type FlatResult, type Part, type Steps } from '../lib/convert/flat';
 import { convert } from '../lib/convert';
 import { TOOL_PAGE_BY_SLUG } from '../lib/tool-pages';
 import { cpuNow } from './timing';
@@ -795,49 +795,68 @@ test('fuzz: unflatten(flatten(x)) is x exactly when flatten does not warn, and m
   for (const k of ['duplicate key', 'all-digit object', 'key with a separator', 'key with a bracket', 'key with a backslash', 'empty key', 'non-ASCII key', '__proto__ or constructor', 'empty object', 'empty array', 'big or exact number']) assert.ok(g.kinds[k] > 20, k);
 });
 
+/**
+ * FUZZ=full runs the gap-budget fuzz below at full size: unflatten's real budget of a million missing items, so the
+ * documents that use it up write a million nulls (about 13 s). By default the budget is lowered to 1,000 and every
+ * gap scaled down with it: the same documents, the same budget arithmetic, in well under a second.
+ */
+const FULL = process.env.FUZZ === 'full';
+
 test('fuzz: lists of records whose all-digit objects compete for the gap budget: the count is exact', () => {
   const r = mulberry32(0xb0d9e7);
   const pick = <T,>(a: readonly T[]) => a[Math.floor(r() * a.length)];
-  const BIG = [600000, 700000, 999990, 999999, 1000000];
+  const real = GAPS.budget;
+  const B = FULL ? real : 1000;
+  // Gaps near the budget: 600,000, 700,000, 999,990, 999,999 and 1,000,000 at full size.
+  const BIG = [0.6 * B, 0.7 * B, B - 10, B - 1, B];
   const SMALL = [0, 1, 2, 5, 30];
   const counts: Record<string, number> = {};
-  for (let n = 0; n < 400; n++) {
-    const sep = pick(['.', '_']);
-    const o: FlatOptions = { sep, arrays: r() < 0.8 ? 'dot' : 'bracket', escape: false, depth: 0 };
-    const rec = () => {
-      const x = r();
-      // Looks like an array with a big gap, but its other key keeps it an object: unflatten spends nothing on it.
-      if (x < 0.3) return `{"a":{"${pick(BIG)}":1},"a${sep}x":2}`;
-      // A small real gap, filled or kept as keys depending on what is left of the budget.
-      if (x < 0.65) return r() < 0.5 ? `{"${pick(SMALL)}":3}` : `{"k":{"${pick(SMALL)}":4,"${pick(SMALL)}":5}}`;
-      return pick(['{"a":{"b":1}}', `{"x${sep}y":1}`, '{"0":"z","q":1}', '{"n":[1,2]}']);
-    };
-    const recs = Array.from({ length: 2 + Math.floor(r() * 3) }, rec);
-    // Now and then a real gap of nearly all the budget first (written out: a million nulls, so not often), leaving
-    // too little for the gap of a record after it.
-    if (n % 20 === 0) {
-      recs.unshift(`{"${pick([999999, 1000000])}":6}`);
-      recs.push('{"30":3}');
+  const t0 = cpuNow();
+  GAPS.budget = B;
+  try {
+    for (let n = 0; n < 400; n++) {
+      const sep = pick(['.', '_']);
+      const o: FlatOptions = { sep, arrays: r() < 0.8 ? 'dot' : 'bracket', escape: false, depth: 0 };
+      const rec = () => {
+        const x = r();
+        // Looks like an array with a big gap, but its other key keeps it an object: unflatten spends nothing on it.
+        if (x < 0.3) return `{"a":{"${pick(BIG)}":1},"a${sep}x":2}`;
+        // A small real gap, filled or kept as keys depending on what is left of the budget.
+        if (x < 0.65) return r() < 0.5 ? `{"${pick(SMALL)}":3}` : `{"k":{"${pick(SMALL)}":4,"${pick(SMALL)}":5}}`;
+        return pick(['{"a":{"b":1}}', `{"x${sep}y":1}`, '{"0":"z","q":1}', '{"n":[1,2]}']);
+      };
+      const recs = Array.from({ length: 2 + Math.floor(r() * 3) }, rec);
+      // A real gap of nearly all the budget first, leaving too little for the gap of a record after it: every 20th
+      // document at full size (each writes a million nulls), every 4th scaled down.
+      if (n % (FULL ? 20 : 4) === 0) {
+        recs.unshift(`{"${pick([B - 1, B])}":6}`);
+        recs.push('{"30":3}');
+      }
+      const text = `[${recs.join(',')}]`;
+      const f = flat(text, o);
+      const u = unflat(f.text, o);
+      // (The output can hold a million nulls: read once, by the fast parser.)
+      const back = u.error ? null : doc(u.text);
+      const ok = !!back && stringify(back, '') === canon(text);
+      assert.equal(ok, !f.warn, `${JSON.stringify(o)}\n${text}\nnote: ${f.note}`);
+      if (!back) continue;
+      const moved = refLeaves(jparse(text), o).filter(([place, json]) => {
+        const n = nodeAt(back, place);
+        return !n || stringify(n, '') !== json;
+      }).length;
+      const said = Number(/^(?:.* · )?([\d,]+) keys? won't unflatten/.exec(f.note)?.[1].replace(/,/g, '') ?? 0);
+      assert.equal(said, moved, `${JSON.stringify(o)}\n${text}\nnote: ${f.note}`);
+      const k = !moved ? 'none moved' : u.note.includes('far apart') ? 'moved, a gap too big' : u.note.includes('missing') ? 'moved, with gaps filled' : 'moved';
+      counts[k] = (counts[k] ?? 0) + 1;
     }
-    const text = `[${recs.join(',')}]`;
-    const f = flat(text, o);
-    const u = unflat(f.text, o);
-    // (The output can hold a million nulls: read once, by the fast parser.)
-    const back = u.error ? null : doc(u.text);
-    const ok = !!back && stringify(back, '') === canon(text);
-    assert.equal(ok, !f.warn, `${JSON.stringify(o)}\n${text}\nnote: ${f.note}`);
-    if (!back) continue;
-    const moved = refLeaves(jparse(text), o).filter(([place, json]) => {
-      const n = nodeAt(back, place);
-      return !n || stringify(n, '') !== json;
-    }).length;
-    const said = Number(/^(?:.* · )?([\d,]+) keys? won't unflatten/.exec(f.note)?.[1].replace(/,/g, '') ?? 0);
-    assert.equal(said, moved, `${JSON.stringify(o)}\n${text}\nnote: ${f.note}`);
-    const k = !moved ? 'none moved' : u.note.includes('far apart') ? 'moved, a gap too big' : u.note.includes('missing') ? 'moved, with gaps filled' : 'moved';
-    counts[k] = (counts[k] ?? 0) + 1;
+  } finally {
+    GAPS.budget = real;
   }
-  console.log(`records fuzz: ${JSON.stringify(counts)}`);
+  const ms = cpuNow() - t0;
+  console.log(`records fuzz (budget ${B.toLocaleString('en-US')}): ${JSON.stringify(counts)} in ${Math.round(ms)} ms of CPU time`);
   for (const k of ['moved, with gaps filled', 'moved, a gap too big', 'none moved']) assert.ok(counts[k] > 10, k);
+  // (At full size about 13 s: every pnpm test paid it.)
+  if (!FULL) assert.ok(ms < 2000, `${Math.round(ms)} ms of CPU time`);
 });
 
 test('fuzz: unflatten of random flat keys matches the reference (results, conflicts, holes)', () => {
