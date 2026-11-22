@@ -60,7 +60,7 @@ function session() {
   const on = (type: string, fn: () => void) => { if (!listeners.has(type)) listeners.set(type, new Set()); listeners.get(type)!.add(fn); };
   const off = (type: string, fn: () => void) => { listeners.get(type)?.delete(fn); };
   const storage = new Map<string, string>();
-  const fetches: { url: string; mode?: string; signal?: AbortSignal; reply: ReturnType<typeof later<unknown>> }[] = [];
+  const fetches: { url: string; mode?: string; cache?: string; signal?: AbortSignal; reply: ReturnType<typeof later<unknown>> }[] = [];
   const sw: Dynamic = { listeners: [] as ((e: { data: unknown }) => void)[], registered: 0 };
   let current: Dynamic | null = null;
   const window: Dynamic = { setTimeout: defer, requestIdleCallback: defer, cancelIdleCallback: cancel, addEventListener: on, removeEventListener: off };
@@ -82,10 +82,10 @@ function session() {
         register: () => { sw.registered++; return new Promise(() => {}); },
       },
     }),
-    fetch: (url: unknown, init?: { mode?: string; signal?: AbortSignal }) => {
+    fetch: (url: unknown, init?: { mode?: string; cache?: string; signal?: AbortSignal }) => {
       const reply = later<unknown>();
       init?.signal?.addEventListener('abort', () => reply.fail(Object.assign(new Error('The operation was aborted'), { name: 'AbortError' })));
-      fetches.push({ url: String(url), mode: init?.mode, signal: init?.signal, reply });
+      fetches.push({ url: String(url), mode: init?.mode, cache: init?.cache, signal: init?.signal, reply });
       return reply.promise;
     },
     Worker: class {
@@ -356,6 +356,17 @@ test('a URL asked for stops the download of the one before, which says nothing',
   await Promise.all([first, second]);
   assert.deepEqual(loads, ['1:b.json']);
   assert.deepEqual(toasts, ['Fetching…', 'Fetching…', 'Loaded b.example']);
+});
+
+test('a document or schema by URL is fetched past the service worker\'s cache (no-store), its failure probe too (review 2, finding 2)', async () => {
+  const { engine, fetches } = loading();
+  const got = engine.fetchUrl('https://tools.example/data.json');
+  assert.equal(fetches[0].cache, 'no-store');
+  fetches[0].reply.fail(new TypeError('Failed to fetch'));
+  await settled();
+  assert.deepEqual(fetches.map((f) => [f.mode, f.cache]), [[undefined, 'no-store'], ['no-cors', 'no-store']]);
+  fetches[1].reply.fail(new TypeError('Failed to fetch'));
+  await got;
 });
 
 test("a file opened while a link's document downloads wins, and the link stays quiet", async () => {

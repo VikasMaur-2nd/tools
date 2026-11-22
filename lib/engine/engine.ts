@@ -30,6 +30,7 @@ import type { SnippetFormat } from '../badge';
 import type { HandoffReply, LinkDoc, LinkRequest } from '../link';
 import type { HugeHook } from '../huge/session';
 import { TallScroll } from './tall';
+import { warmUrls } from './warm';
 
 /** A key held for the palette, the shortcuts or a context menu while it loaded (see Engine.holdKeys). */
 export type HeldKey = Pick<KeyboardEvent, 'key' | 'ctrlKey' | 'metaKey' | 'altKey' | 'shiftKey'>;
@@ -2966,7 +2967,8 @@ export class Engine {
     this.toast('Fetching…', 'info');
     let res: Response | null = null;
     try {
-      res = await fetch(url, { headers: { Accept: 'application/json, text/plain, */*' }, signal });
+      // (no-store: the service worker passes it by, so what was fetched for the visitor is never kept there.)
+      res = await fetch(url, { headers: { Accept: 'application/json, text/plain, */*' }, cache: 'no-store', signal });
       if (signal.aborted) return null;
       if (!res.ok) {
         this.toast(`Request failed: ${res.status} ${res.statusText}`, 'err');
@@ -2997,7 +2999,7 @@ export class Engine {
     const stop = () => probe.abort();
     signal.addEventListener('abort', stop);
     try {
-      await fetch(url, { mode: 'no-cors', signal: probe.signal });
+      await fetch(url, { mode: 'no-cors', cache: 'no-store', signal: probe.signal });
       return "Couldn't fetch. The server must allow cross-origin requests (CORS).";
     } catch {
       return signal.aborted ? null : "Couldn't reach the server. Check the address or try again later.";
@@ -4651,13 +4653,8 @@ export class Engine {
           const next = () => {
             const load = mods.shift();
             if (load) return void load().then(() => idle(next), () => idle(next));
-            // Hand the SW every asset this page loaded so the app works offline.
-            const urls = performance
-              .getEntriesByType('resource')
-              .map((e) => e.name)
-              .filter((u) => u.startsWith(location.origin) && !u.includes('/_vercel/'));
-            const home = /^\/[a-z]{2}(?=\/|$)/.exec(location.pathname)?.[0] || '/';
-            reg.active?.postMessage({ type: 'cache', urls: [...new Set([location.origin + '/', location.origin + home, location.origin + location.pathname, ...urls])] });
+            // Hand the SW the app's files this page loaded so the app works offline (./warm.ts).
+            reg.active?.postMessage({ type: 'cache', urls: warmUrls(performance.getEntriesByType('resource') as PerformanceResourceTiming[], location.origin, location.pathname) });
           };
           idle(next);
         })

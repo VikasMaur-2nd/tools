@@ -13,11 +13,11 @@ import { EN } from '../lib/i18n/ui';
 type Reply = Response | Error | ((init?: RequestInit) => Promise<Response>);
 /** A page's fetch answering from `site` (URL → reply), noting what was asked. */
 function env(site: Record<string, Reply>, more: Partial<FetchEnv> = {}) {
-  const asked: { url: string; mode?: string; credentials?: string }[] = [];
+  const asked: { url: string; mode?: string; credentials?: string; cache?: string }[] = [];
   const e: FetchEnv = {
     fetch: (async (u: string | URL, init?: RequestInit) => {
       const url = String(u);
-      asked.push({ url, mode: init?.mode, credentials: init?.credentials });
+      asked.push({ url, mode: init?.mode, credentials: init?.credentials, cache: init?.cache });
       const r = site[url];
       if (r === undefined) throw new TypeError('Failed to fetch');
       if (r instanceof Error) throw r;
@@ -41,6 +41,15 @@ test('each document once (fragments stripped), in the order asked, without cooki
     { url: 'https://b.test/t.json', text: '{"minimum":0}' },
   ]);
   assert.deepEqual(asked.map((a) => [a.url, a.credentials]), [['https://a.test/s.json', 'omit'], ['https://b.test/t.json', 'omit']]);
+});
+
+test('schemas are fetched past the service worker\'s cache (no-store), the CORS probe too (review 2, finding 2)', async () => {
+  const { env: e, asked } = env({
+    'https://a.test/s.json': json({}),
+    'https://cors.test/s': (init) => (init?.mode === 'no-cors' ? Promise.resolve(new Response(null, { status: 200 })) : Promise.reject(new TypeError('Failed to fetch'))),
+  });
+  await run(['https://a.test/s.json', 'https://cors.test/s'], e);
+  assert.deepEqual(asked.map((a) => [a.url, a.mode, a.cache]), [['https://a.test/s.json', undefined, 'no-store'], ['https://cors.test/s', undefined, 'no-store'], ['https://cors.test/s', 'no-cors', 'no-store']]);
 });
 
 test('why each failed: a status, CORS, unreachable, offline, http on an https page, not JSON, too big, cut short', async () => {

@@ -1,7 +1,8 @@
 /**
  * Schemas a schema refers to by URL (a remote `$ref`), fetched only when the visitor asks (the Schema view's Fetch
- * referenced schemas: lib/schema/controller.ts fetchRemote). Each URL is fetched once, without its fragment and
- * without cookies, read up to a size limit and checked to be JSON. Why one failed says what the visitor can do,
+ * referenced schemas: lib/schema/controller.ts fetchRemote). Each URL is fetched once, without its fragment, without
+ * cookies and past the service worker's cache (public/sw.js leaves no-store requests alone), read up to a size limit
+ * and checked to be one schema. Why one failed says what the visitor can do,
  * in the words the app uses when it fetches a document (lib/engine/engine.ts fetchText, fetchFailure).
  */
 import { BOOL, OBJ, parse } from '../json/parser';
@@ -87,7 +88,8 @@ async function one(url: string, signal: AbortSignal, env: FetchEnv): Promise<Fet
   }, REMOTE_TIMEOUT);
   let res: Response | null = null;
   try {
-    res = await env.fetch(url, { headers: { Accept: 'application/schema+json, application/json, */*' }, credentials: 'omit', signal: stop.signal });
+    // (no-store: the service worker passes it by, so it is never kept outside this tab, nor asked for again with cookies.)
+    res = await env.fetch(url, { headers: { Accept: 'application/schema+json, application/json, */*' }, credentials: 'omit', cache: 'no-store', signal: stop.signal });
     if (!res.ok) return { url, failure: { kind: 'status', status: res.status, statusText: res.statusText } };
     const text = await body(res);
     const r = parse(text);
@@ -104,7 +106,7 @@ async function one(url: string, signal: AbortSignal, env: FetchEnv): Promise<Fet
     // The browser says the same for a server that doesn't allow cross-origin reads and one it can't reach: a reply
     // the page may not read arrives only from a server that is there.
     try {
-      await env.fetch(url, { mode: 'no-cors', credentials: 'omit', signal: stop.signal });
+      await env.fetch(url, { mode: 'no-cors', credentials: 'omit', cache: 'no-store', signal: stop.signal });
       return { url, failure: { kind: 'cors' } };
     } catch {
       return signal.aborted ? null : { url, failure: { kind: late ? 'timeout' : 'unreachable' } };

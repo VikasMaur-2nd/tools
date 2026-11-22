@@ -99,6 +99,8 @@ function worker(source = readFileSync(join(process.cwd(), 'public/sw.js'), 'utf8
     install: () => dispatch('install'),
     visit,
     post: (urls: string[], from = 'tab') => dispatch('message', { data: { type: 'cache', urls: urls.map((u) => ORIGIN + u) }, source: { id: from } }),
+    /** A fetch() the page makes (not a navigation), with its cache mode: the SW's answer, null if it leaves it alone. */
+    get: (path: string, cache = 'default') => dispatch('fetch', { request: { method: 'GET', url: ORIGIN + path, mode: 'cors', headers: new Headers(), destination: '', cache } }),
     cached: (path: string) => store.get(ORIGIN + path)?.body,
     has: (path: string) => store.has(ORIGIN + path),
     statics: () => [...store.keys()].filter((u) => u.includes('/_next/static/')).map((u) => new URL(u).pathname).sort(),
@@ -340,4 +342,22 @@ test('service worker: after a deploy, an old build\'s dictionaries go once its t
   sw.tabs(['tab-b']);
   await sw.post(['/de'], 'tab-b');
   assert.deepEqual([sw.has(a), sw.has(b), sw.has('/_next/static/chunks/a-main.js')], [false, true, false]);
+});
+
+test('service worker: what the page fetches for the visitor (no-store) is never answered or kept; the warm-up names only pages and app files (review 2, finding 2)', async () => {
+  const sw = worker();
+  sw.serve({ ...build('a'), '/schema.json': '{"type": "string"}', '/api/schema': '{}' });
+  await sw.install();
+  // A schema or document by URL: the SW leaves it alone (the browser fetches it), nothing is cached.
+  assert.equal(await sw.get('/schema.json', 'no-store'), null);
+  assert.ok(!sw.has('/schema.json'));
+  // (Without no-store, a same-origin file is answered and kept: what the page must not let happen to them.)
+  assert.ok(await sw.get('/schema.json'));
+  // The warm-up: a file the page fetched isn't fetched again here, nor kept; its pages and app files still are.
+  const fresh = worker();
+  fresh.serve({ ...build('a'), '/schema.json': '{"type": "string"}' });
+  await fresh.install();
+  await fresh.post(['/', '/schema.json', '/tools/json-graph', '/_next/static/chunks/a-graph.js']);
+  assert.ok(!fresh.fetched.includes('/schema.json') && !fresh.has('/schema.json'));
+  assert.ok(fresh.has('/tools/json-graph') && fresh.has('/_next/static/chunks/a-graph.js'));
 });
