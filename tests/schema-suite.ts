@@ -1,7 +1,7 @@
 /**
  * Runs JSON-Schema-Test-Suite files (github.com/json-schema-org/JSON-Schema-Test-Suite, MIT) against lib/schema:
- * each test case once per draft it is compatible with, its external schemas as resources (then the official
- * meta-schemas that come with the app, as the Schema view has them), format-assertion cases with format assertion on.
+ * each test case once per draft it is compatible with, its external schemas as resources (the official meta-schemas
+ * that come with the app as the fallback, as the Schema view has them), format-assertion cases with format assertion on.
  * Files are parsed with the app's own lossless parser.
  */
 import { readdirSync, readFileSync, existsSync } from 'node:fs';
@@ -51,7 +51,7 @@ export interface CaseResult {
   error?: string;
 }
 
-/** Every test of the `.json` files in `dir` (and its optional/ folder) for every draft. `meta`: resources after each case's own. */
+/** Every test of the `.json` files in `dir` (and its optional/ folder) for every draft. `meta`: the fallback schemas. */
 export function runSuite(dir: string, drafts = SUITE_DRAFTS, meta: Map<string, JNode> = bundledMeta()): CaseResult[] {
   const out: CaseResult[] = [];
   const files: [string, boolean][] = [];
@@ -66,14 +66,13 @@ export function runSuite(dir: string, drafts = SUITE_DRAFTS, meta: Map<string, J
       const ext = get(tc, 'externalSchemas');
       const resources = new Map<string, JNode>();
       if (ext) for (const m of kids(ext)) resources.set(m.key as string, m);
-      for (const [url, root] of meta) if (!resources.has(url)) resources.set(url, root);
       const schema = get(tc, 'schema')!;
       for (const draft of drafts) {
         if (!compatible(compat && compat.t === STR ? (compat.v as string) : undefined, draft)) continue;
         let v: Validator | null = null;
         let err = '';
         try {
-          v = new Validator(schema, { draft, formats: tagList.includes('format-assertion'), resources });
+          v = new Validator(schema, { draft, formats: tagList.includes('format-assertion'), resources, fallback: meta });
         } catch (e) {
           err = String(e);
         }

@@ -144,3 +144,38 @@ test('the worker gets the fetched schemas once, then only when one more comes', 
   assert.deepEqual(sent.map((m) => m.resources && Object.keys(m.resources)), [[], ['https://a.test/s.json'], null, ['https://a.test/s.json', 'https://b.test/t.json']]);
   client.destroy();
 });
+
+test('one $id claimed by two schemas names neither: a fetched schema never stands in for a local one (review 2, finding 1)', () => {
+  const v = (schema: object, doc: unknown, resources: Record<string, string>) => validateTexts({ schema: JSON.stringify(schema), doc: JSON.stringify(doc), draft: null, formats: false, resources });
+  const say = (r: ValidateResult) => ({ valid: r.valid, complete: r.complete, total: r.total, problems: r.problems.map((p) => `${p.code}${p.params.why ? ':' + p.params.why : ''}${p.warn ? ' (warn)' : ''}${p.doc ? ' in ' + p.doc : ''}`) });
+  const rule = { type: 'integer' };
+  const main = { $id: 'https://a.test/main.json', allOf: [{ $ref: '#/$defs/rule' }, { $ref: 'https://a.test/other.json' }], $defs: { rule } };
+  // other.json claims main.json's $id and puts `true` where its rule is: the local rule is never replaced, whatever
+  // order the refs come in; the clash is an error and the refs to that URI aren't applied (not fully checked).
+  const other = { 'https://a.test/other.json': JSON.stringify({ $id: 'https://a.test/main.json', $defs: { rule: true } }) };
+  for (const schema of [main, { ...main, allOf: [...main.allOf].reverse() }]) {
+    assert.deepEqual(say(v(schema, 'x', other)), { valid: false, complete: false, total: 0, problems: ['unresolved:duplicate', 'duplicateId in https://a.test/other.json'] });
+  }
+  const dup = v(main, 'x', other).problems.find((p) => p.params.why === 'duplicate')!;
+  assert.equal(problemText('unresolved', dup.params, EN), "Can't resolve $ref #/$defs/rule: two schemas have the $id https://a.test/main.json");
+  assert.equal(problemText('duplicateId', v(main, 'x', other).problems[1].params, EN), "Two schemas have the $id https://a.test/main.json: a $ref to it can't be resolved");
+  // A fetched schema nothing refers to (one fetched for an earlier version of the schema) claims nothing.
+  assert.deepEqual(say(v({ ...main, allOf: [{ $ref: '#/$defs/rule' }] }, 'x', other)), { valid: false, complete: true, total: 1, problems: [] });
+  // Two of the schema's own resources with one $id: the same.
+  const own = { $ref: 'https://a.test/x', $defs: { a: { $id: 'https://a.test/x', type: 'string' }, b: { $id: 'https://a.test/x', type: 'number' } } };
+  assert.deepEqual(say(v(own, true, {})), { valid: false, complete: false, total: 0, problems: ['unresolved:duplicate', 'duplicateId'] });
+});
+
+test('a fetched schema is known by its $id whichever ref comes first (review 2, finding 1)', () => {
+  const v = (schema: object, doc: unknown, resources: Record<string, string>) => validateTexts({ schema: JSON.stringify(schema), doc: JSON.stringify(doc), draft: null, formats: false, resources });
+  const res = { 'https://a.test/r.json': JSON.stringify({ $id: 'https://a.test/canonical.json', $defs: { n: { type: 'number' } } }) };
+  const refs = ['https://a.test/canonical.json#/$defs/n', 'https://a.test/r.json'];
+  for (const list of [refs, [...refs].reverse()]) {
+    const r = v({ allOf: list.map(($ref) => ({ $ref })) }, 'x', res);
+    assert.deepEqual([r.valid, r.complete, r.errors.map((e) => e.code), r.remote, r.problems], [false, true, ['type'], undefined, []], list[0]);
+  }
+  // Referred to only by its $id, from the schema, but reached through another fetched schema: the same.
+  const via = { ...res, 'https://a.test/hub.json': JSON.stringify({ $ref: 'https://a.test/r.json' }) };
+  const r = v({ allOf: [{ $ref: 'https://a.test/canonical.json#/$defs/n' }, { $ref: 'https://a.test/hub.json' }] }, 'x', via);
+  assert.deepEqual([r.complete, r.errors.map((e) => e.code)], [true, ['type']]);
+});

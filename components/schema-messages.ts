@@ -89,6 +89,8 @@ export function problemText(code: string, p: Params, t: T): string {
       // official meta-schema comes with the app instead, lib/schema/meta.ts: `meta` when its copy didn't load.)
       return p.why === 'remote' && /^https?:\/\//i.test(String(p.uri))
         ? t("Can't resolve $ref {ref}: {uri} isn't fetched yet. Use Fetch referenced schemas, or add it under $defs with its $id.", p)
+        : p.why === 'duplicate'
+          ? t("Can't resolve $ref {ref}: two schemas have the $id {uri}", p)
         : p.why === 'meta'
           ? t("Can't resolve $ref {ref}: the app's copy of the official meta-schema {uri} didn't load. Check your connection; it's tried again with your next change.", p)
         : p.why === 'remote'
@@ -115,7 +117,7 @@ export function problemText(code: string, p: Params, t: T): string {
     case 'badAnchor':
       return t('{kw} {name} is not a valid anchor name', p);
     case 'duplicateId':
-      return t('Two schemas have the $id {id}: the first one is used', p);
+      return t("Two schemas have the $id {id}: a $ref to it can't be resolved", p);
     case 'boolSchema4':
       return t('Boolean schemas (true and false) need draft-06 or later');
     case 'notSchema':

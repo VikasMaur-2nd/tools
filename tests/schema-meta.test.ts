@@ -241,3 +241,24 @@ test('the worker fetches the meta-schemas from the app the first time a schema n
     delete g.self;
   }
 });
+
+test('a fetched or embedded schema reads its own $schema as the root does, a vocabulary’s meta-schema too (review 2, finding 4)', () => {
+  const f = { $schema: 'https://json-schema.org/draft/2019-09/meta/applicator', items: [{ type: 'integer' }] };
+  const req = { schema: JSON.stringify({ $ref: 'https://a.test/f.json' }), doc: '["x"]', draft: null, formats: false, resources: { 'https://a.test/f.json': JSON.stringify(f) } };
+  // Read as 2019-09 (items as a list: the first item an integer), under a 2020-12 schema.
+  const r = session.run(req);
+  assert.deepEqual([r.valid, r.complete, r.errors.map((e) => e.pointer), r.problems], [false, true, ['/0'], []]);
+  // Embedded, with its own $id: the same.
+  const e = check({ $ref: 'https://a.test/e', $defs: { e: { $id: 'https://a.test/e', ...f } } }, ['x']);
+  assert.deepEqual(say(e), bad('/0'));
+  // Without the meta-schemas, its $schema is unknown (said, in its schema) and they are wanted.
+  const s = new SchemaSession();
+  assert.equal(s.wantsMeta(req), true);
+  assert.deepEqual(s.run(req).problems.map((p) => [p.code, p.doc]), [['unknownSchema', 'https://a.test/f.json'], ['itemsArray2020', 'https://a.test/f.json']]);
+});
+
+test('a copy of a meta-schema in the schema is the one used: no clash with the app’s', () => {
+  const r = check({ $ref: 'https://json-schema.org/draft/2020-12/schema', $defs: { copy: { $id: 'https://json-schema.org/draft/2020-12/schema', type: 'string' } } }, 1);
+  assert.deepEqual(say(r), bad(''));
+  assert.deepEqual(r.errors.map((e) => e.code), ['type']);
+});

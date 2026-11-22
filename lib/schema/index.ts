@@ -229,14 +229,15 @@ export class SchemaSession {
       resources.set(url, root);
       docs.set(root, url);
     }
-    // (By their https URLs and the http ones the older drafts' ids use.)
+    // (For what nothing else names, by their https URLs and the http ones the older drafts' ids use.)
+    const fallback = new Map<string, JNode>();
     for (const [url, root] of this.meta ?? []) {
-      resources.set(url, root).set(url.replace(/^https:/, 'http:'), root);
+      fallback.set(url, root).set(url.replace(/^https:/, 'http:'), root);
       docs.set(root, url);
     }
     if (sr.root && !sr.error) {
       try {
-        v = new Validator(sr.root, { draft: req.draft ?? 2020, formats: req.formats, resources });
+        v = new Validator(sr.root, { draft: req.draft ?? 2020, formats: req.formats, resources, fallback });
       } catch {
         v = null;
       }
