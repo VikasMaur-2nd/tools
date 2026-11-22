@@ -217,6 +217,24 @@ test('handoff messages carry flatten\'s options too: a number for depth, a boole
   assert.equal('flat' in open({ sep: '/' }, 'go'), false);
 });
 
+test('the first load knows a link when it sees one, and loads the code to read it only then', async () => {
+  // (lib/link.ts was part of every page's first load, ~1.1 KB gzip of it; the engine now imports it when a link is
+  // opened or made, and asks lib/engine/rules.ts linkIn whether there is one.)
+  const { readFileSync } = await import('node:fs');
+  const { linkIn, MAX_DOCUMENT: max } = await import('../lib/engine/rules');
+  for (const h of ['', '#', '#how-it-works', '#handoff', '#handoff2', '#a=', '#a=abc', '#b=x', '#view=tree&a=x', '#xa=1', '#ab=1', 'a=abc', '#a', '#&b=1', '#c=1&b=2']) {
+    assert.equal(linkIn(h), parseLink(h) !== null, h);
+  }
+  assert.equal(max, MAX_DOCUMENT);
+  const src = (p: string) => readFileSync(p, 'utf8');
+  const engine = src('lib/engine/engine.ts');
+  assert.doesNotMatch(engine, /^import (?!type )[^;]*from '\.\.\/link';/m, 'the engine imports only types from lib/link.ts');
+  assert.match(engine, /await import\('\.\.\/link'\)/);
+  for (const f of ['components/JsonTool.tsx', 'lib/engine/commands.ts', 'lib/engine/store.ts', 'lib/engine/rules.ts', 'lib/engine/targets.ts', 'lib/huge/open.ts']) {
+    assert.doesNotMatch(src(f), /from '(?:@\/lib|\.\.?)\/link'/, f);
+  }
+});
+
 test('link reach follows the measured browser limits (warnings only)', () => {
   assert.equal(linkReach(2_000), 'all');
   assert.equal(linkReach(512_000), 'all', "Chrome's and Edge's address bar keeps 512,000 pasted characters");

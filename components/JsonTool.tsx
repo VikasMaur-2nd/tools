@@ -7,11 +7,11 @@ import { createPortal } from 'react-dom';
 import { PRIVATE, PRIVATE_LABELS } from '@/lib/analytics';
 import { Engine, type EnginePreset } from '@/lib/engine/engine';
 import { idle } from '@/lib/engine/idle';
+import { linkIn } from '@/lib/engine/rules';
 import { act, getEngine, setEngine } from '@/lib/engine/instance';
 import { paired, store, useUI, type CsvDelimiter, type IndentId, type JwtInfo, type SourceFormat, type View } from '@/lib/engine/store';
 import { TARGETS, isFlat, targetInfo } from '@/lib/engine/targets';
 import { useT } from '@/lib/i18n/react';
-import { parseLink } from '@/lib/link';
 import { startAgentTools } from '@/lib/webmcp';
 import { setRuntime, type T } from '@/lib/i18n/ui';
 import { Icon, type IconName } from './icons';
@@ -1277,7 +1277,7 @@ export default function JsonTool({ preset, langs }: { preset?: EnginePreset; /**
 
   useEffect(() => {
     // A link to a landing page opens the linked documents instead of the page's sample.
-    const pagePreset = parseLink(location.hash) ? undefined : presetRef.current;
+    const pagePreset = linkIn(location.hash) ? undefined : presetRef.current;
     // Engine DOM code (folds, tooltips, value hints) reads the page's strings from here.
     setRuntime(tRef.current);
     const e = new Engine({
