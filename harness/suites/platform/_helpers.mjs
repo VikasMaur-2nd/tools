@@ -494,7 +494,8 @@ async function swState(page) {
       sw.postMessage({ type }, [ch.port2]);
     });
     return {
-      page: { url: location.pathname, readyState: document.readyState, ...window.__swSteps },
+      // (warm: the warm-up's steps so far, 'tk:sw-warm' in registerSW; hidden or unfocused pages may get no idle time.)
+      page: { url: location.pathname, readyState: document.readyState, ...window.__swSteps, warm: performance.getEntriesByName('tk:sw-warm').length, visibility: document.visibilityState, focused: document.hasFocus() },
       controller: sw?.state ?? null,
       version: await ask('harness-version'),
       registration: reg ? { active: reg.active?.state, waiting: reg.waiting?.state, installing: reg.installing?.state } : null,
