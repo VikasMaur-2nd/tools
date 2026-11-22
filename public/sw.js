@@ -27,13 +27,20 @@
  * network must not fail; a chunk named only inside a script that the server
  * doesn't have holds nothing back (a stray name is no file).
  *
- * Deploys: when '/' changes build, the /_next/static files that no cached page
- * needs any more are retired, not deleted: tabs open at that moment run the old
- * build and may still load any chunk of it (a feature opened for the first time,
- * offline). Retired files are deleted once all those tabs are closed (checked on
- * later visits and page messages), or after RETIRE_MS. The cache so holds the
- * current build, the builds its cached pages were saved with, and older builds
- * only while their tabs live. The record ('/sw.js?retired') is never served.
+ * Deploys: when a cached page ('/' or any other) is replaced by a copy of another
+ * build, the hashed files no cached page needs any more are retired, not deleted:
+ * the files its old copy needed, and any other cached one no page needs that isn't
+ * retired yet (what a tab loaded on its own: a page reached by client-side
+ * navigation). Each such retirement is a generation, kept with the tabs open at
+ * that moment, and those being opened from the cache: they may run the old build
+ * and still load any chunk of it (a feature opened for the first time, offline).
+ * A generation's files are deleted once all its tabs are closed (checked on later
+ * visits and page messages), or RETIRE_MS after it, unless a cached page needs them
+ * again. A tool page showing a new build also brings '/' and its language's home to
+ * it, so a visitor who never opens '/' gets the same clean-up. The cache so holds
+ * the current build, the builds its cached pages were saved with, and older builds
+ * only while their tabs live. The record ('/sw.js?retired') is never served. Why no
+ * tab loses a file it needs: see tidy().
  */
 const VERSION = 'v2';
 const PREFIX = 'json-viewer-';
@@ -42,6 +49,8 @@ const ORIGIN = self.location.origin;
 const MATCH = { ignoreVary: true };
 const RETIRED = ORIGIN + '/sw.js?retired';
 const RETIRE_MS = 7 * 24 * 3600 * 1000;
+/** Longer than a tab takes to show among the clients once its page is served (see opening). */
+const OPENING_MS = 60 * 1000;
 /** The most files followed for one page (the home page has about 40). */
 const MAX_FILES = 500;
 
@@ -55,6 +64,8 @@ const CHUNK_RE = /["'](static\/(?:chunks|media)\/[^"'\\\s]+)["']/g;
 const CSS_URL_RE = /url\(\s*["']?([^"')\s]+)/g;
 
 const isStatic = (path) => path.startsWith('/_next/static/');
+/** Files named by their content, never changed (a new build names new ones): what deploys retire. */
+const isHashed = (path) => isStatic(path);
 /** Language prefix of a localized page (/es, /pt/tools/…), or ''. */
 const langHome = (path) => (/^\/[a-z]{2}(?=\/|$)/.exec(path) || [''])[0];
 const HUGE_STRINGS_RE = /^\/_next\/static\/media\/huge-strings\.([a-z]{2})\./;
@@ -161,17 +172,21 @@ function sameFiles(a, b) {
 
 /**
  * Puts a page (`res`, a 200) into the cache once its files are; resolves false when they
- * couldn't be (the copy there stays). A copy of the same build only gets fresher HTML.
+ * couldn't be (the copy there stays), else { replaced: whether it took the place of another
+ * build's copy }. A copy of the same build only gets fresher HTML. `fresh`: the tab that got
+ * this copy from the network, if any (see tidy).
  */
-async function storePage(cache, key, res) {
-  if (isHTML(res)) {
-    const html = await res.clone().text();
-    const old = await cache.match(key, MATCH);
-    const same = old && isHTML(old) && sameFiles(extractAssets(await old.text()), extractAssets(html));
-    if (!same && !(await pageFiles(cache, html, true, false, typeof key === 'string' ? key : key.url)).ok) return false;
+async function storePage(cache, key, res, fresh) {
+  if (!isHTML(res)) {
+    await cache.put(key, res);
+    return { replaced: false };
   }
-  await cache.put(key, res);
-  return true;
+  const page = typeof key === 'string' ? key : key.url;
+  const html = await res.clone().text();
+  const old = await cache.match(key, MATCH);
+  const same = old && isHTML(old) && sameFiles(extractAssets(await old.text()), extractAssets(html));
+  if (!same && !(await pageFiles(cache, html, true, false, page)).ok) return false;
+  return serially(() => commit(cache, key, page, res, html, false, fresh));
 }
 
 /** Cache `url` unless present (a page with its files). Resolves false when it couldn't be. */
@@ -179,30 +194,92 @@ async function cacheIfMissing(cache, url) {
   if (await cache.match(url, MATCH)) return true;
   try {
     const res = await fetch(url, { credentials: 'same-origin' });
-    return cacheable(res) && (await storePage(cache, url, res));
+    return cacheable(res) && !!(await storePage(cache, url, res));
   } catch {
     return false;
   }
 }
 
-/** One deploy tidy-up at a time (each reads and writes the retired record). */
+/**
+ * One at a time: tidy-ups (each reads and writes the retired record) and the last step of storing
+ * a page (see commit). Both read the cache and the clients only, never the network: a stalled
+ * download never holds the queue up.
+ */
 let tidying = Promise.resolve();
 const serially = (fn) => (tidying = tidying.then(fn, fn));
 
 /**
- * After a deploy (`deployed`), retires the /_next/static files no cached page needs,
- * with the tabs open now (`opening`: one being opened from the old shell); then deletes
- * retired files once those tabs are all gone, or RETIRE_MS later (see the header).
+ * The last step of storing a page (`res`, its HTML `html` already read, so storing it waits for no
+ * network), run through `serially`: no tidy-up deletes a file between the check below and the page
+ * going in. Unless the copy there is of the same build (or, with `partial`, there is none), every
+ * file the HTML names that must make it is checked to be cached still: if one is gone, nothing is
+ * stored (false) and the copy there stays. Then tidies up: an old copy of another build retires
+ * the files it needed. Resolves { replaced, old: the old copy's HTML or null }.
  */
-async function tidy(cache, deployed, opening) {
-  const saved = await cache.match(RETIRED);
-  const rec = saved ? await saved.json().catch(() => null) : null;
-  if (!deployed && !rec) return;
+async function commit(cache, key, page, res, html, partial, fresh) {
+  const prev = await cache.match(key, MATCH);
+  const old = prev && isHTML(prev) ? await prev.text() : null;
+  const files = extractAssets(html);
+  const same = old !== null && sameFiles(extractAssets(old), files);
+  if (!same && !(partial && !prev)) {
+    const must = files.filter((u) => isHashed(new URL(u).pathname) && !otherStrings(u, page));
+    const held = await Promise.all(must.map((u) => cache.match(u, MATCH)));
+    if (held.indexOf(undefined) !== -1) return false;
+  }
+  await cache.put(key, res);
+  const replaced = old !== null && !same;
+  await tidy(cache, replaced ? { html: old, page, fresh } : null).catch(() => {});
+  return { replaced, old };
+}
+
+/**
+ * Tabs being opened from the cache: navigations that may get a cached page (an old build's,
+ * perhaps), noted when they start and dropped once they get the network's page instead, or once
+ * their tab shows among the clients, which it does a moment after its page is served (until then
+ * clients.matchAll() misses it), or after OPENING_MS. Keyed by navigation; `id`: the id the tab
+ * will have (resultingClientId), '' in browsers without one.
+ */
+const opening = new Map();
+function noteOpening(id) {
+  const key = {};
+  const now = Date.now();
+  opening.forEach((o, k) => now - o.at > OPENING_MS && opening.delete(k));
+  opening.set(key, { id: id || '', at: now });
+  return key;
+}
+
+/**
+ * The tabs that may run some build now (`ids`): every window client, another worker's too, and the
+ * tabs being opened from the cache. `unnamed`: one of those has no id.
+ */
+async function liveTabs() {
   const tabs = await self.clients.matchAll({ type: 'window', includeUncontrolled: true });
-  const live = new Set(tabs.map((c) => c.id));
-  if (opening) live.add(opening);
-  const keys = await cache.keys();
-  // What cached pages need, from what the cache holds.
+  const ids = new Set(tabs.map((c) => c.id));
+  const now = Date.now();
+  let unnamed = false;
+  opening.forEach((o, key) => {
+    if (ids.has(o.id) || now - o.at > OPENING_MS) opening.delete(key); // a client like any other from now on, or never one
+    else if (o.id) ids.add(o.id);
+    else unnamed = true;
+  });
+  return { ids, unnamed };
+}
+
+/** Among a generation's tabs: one being opened without an id when it began (see tidy). */
+const UNSEEN = '?';
+
+/** The record's generations of retired files, [{ urls, clients, at }] (see the header). `live`: the tabs open now. */
+function generations(rec, live) {
+  if (!rec) return [];
+  if (Array.isArray(rec.gens)) return rec.gens.filter((g) => g && Array.isArray(g.urls) && Array.isArray(g.clients) && typeof g.at === 'number');
+  // An older worker's record: one list, given the tabs open at each deploy. The tabs open now join it,
+  // as that worker's next deploy would have had them (they may run a build whose files it lists).
+  if (Array.isArray(rec.urls) && Array.isArray(rec.clients)) return [{ urls: rec.urls, clients: rec.clients.concat(Array.from(live)), at: rec.at || Date.now() }];
+  return [];
+}
+
+/** Every file the cached pages need, from what the cache holds (`keys`: its keys). */
+async function needed(cache, keys) {
   const keep = new Set();
   for (const k of keys) {
     const path = new URL(k.url).pathname;
@@ -210,32 +287,86 @@ async function tidy(cache, deployed, opening) {
     const page = await cache.match(k, MATCH);
     if (page && isHTML(page)) (await pageFiles(cache, await page.text(), false, true, k.url)).files.forEach((u) => keep.add(u));
   }
-  let urls = rec ? rec.urls : [];
-  let clients = rec ? rec.clients.filter((id) => live.has(id)) : [];
-  let at = rec ? rec.at : Date.now();
-  if (deployed) {
-    const old = new Set(urls);
-    keys.forEach((k) => isStatic(new URL(k.url).pathname) && !keep.has(k.url) && old.add(k.url));
-    urls = Array.from(old);
-    clients = Array.from(new Set(clients.concat(Array.from(live))));
-    at = Date.now();
+  return keep;
+}
+
+/**
+ * Retires and deletes old builds' files (see the header). Run through `serially` only. `replaced`:
+ * { html, page, fresh } when a cached page's copy was just replaced by another build's (`fresh`: the
+ * tab that got the new copy from the network); `posted`: the files a tab (`from`, its id) reports it
+ * loaded.
+ *
+ * Why no tab loses a file it needs (a tab runs its page's build, and may load any file of it later):
+ *  - A tab open, or being opened from the cache, when its page's copy is replaced is among the tabs of
+ *    the generation that copy's files go to (from an older generation too: tabs opened since then may
+ *    have got that copy), so they stay while it is open. Not the tab that got the new copy from the
+ *    network (it shows among the clients by then): it runs the new build.
+ *  - A tab opened later got a cached page, whose files stay while it is cached and go to a generation
+ *    with this tab among its tabs when it is replaced, or the network's page: the current build, whose
+ *    files a later replacement retires with this tab among the tabs. A retired file such a tab reports
+ *    it loaded leaves its generation (to be retired again by a later replacement).
+ *  - Deleting checks the cached pages again: a file one needs again stays.
+ * A tab being opened without an id stands as UNSEEN: OPENING_MS later, every tab open then takes its
+ * place (it among them, if it is still open).
+ */
+async function tidy(cache, replaced, posted, from) {
+  const saved = await cache.match(RETIRED);
+  const text = saved ? await saved.text() : null;
+  let rec = null;
+  try {
+    rec = text && JSON.parse(text);
+  } catch {}
+  if (!rec && !replaced) return;
+  const { ids, unnamed } = await liveTabs();
+  const now = Date.now();
+  const loaded = new Set((posted || []).map((u) => u.split('#')[0]));
+  let gens = generations(rec, ids);
+  gens.forEach((g) => {
+    const unseen = g.clients.indexOf(UNSEEN) !== -1;
+    // A newer tab uses these (a tab while one is UNSEEN may be that one: it soon joins the tabs instead).
+    if (!unseen && g.clients.indexOf(from) === -1) g.urls = g.urls.filter((u) => !loaded.has(u));
+    if (unseen && now - g.at >= OPENING_MS) g.clients = g.clients.concat(Array.from(ids));
+    g.clients = g.clients.filter((id) => ids.has(id) || (id === UNSEEN && now - g.at < OPENING_MS)); // closed tabs go
+  });
+  let keep = null;
+  if (replaced) {
+    const keys = await cache.keys();
+    keep = await needed(cache, keys);
+    const cached = new Set(keys.map((k) => k.url));
+    const freed = new Set();
+    (await pageFiles(cache, replaced.html, false, true, replaced.page)).files.forEach((u) => cached.has(u) && !keep.has(u) && freed.add(u));
+    const held = new Set();
+    gens.forEach((g) => {
+      g.urls = g.urls.filter((u) => !freed.has(u));
+      g.urls.forEach((u) => held.add(u));
+    });
+    const urls = keys.map((k) => k.url).filter((u) => isHashed(new URL(u).pathname) && !keep.has(u) && !held.has(u));
+    const clients = Array.from(ids).filter((id) => id !== replaced.fresh);
+    if (urls.length) gens.push({ urls, clients: clients.concat(unnamed ? [UNSEEN] : []), at: now });
   }
-  if (clients.length && Date.now() - at < RETIRE_MS) {
-    await cache.put(RETIRED, new Response(JSON.stringify({ urls, clients, at }), { headers: { 'content-type': 'application/json' } }));
+  const done = gens.filter((g) => !g.clients.length || now - g.at >= RETIRE_MS);
+  if (done.length) {
+    if (!keep) keep = await needed(cache, await cache.keys());
+    await Promise.all([].concat(...done.map((g) => g.urls)).filter((u) => !keep.has(u)).map((u) => cache.delete(u)));
+  }
+  gens = gens.filter((g) => done.indexOf(g) === -1 && g.urls.length);
+  if (!gens.length) {
+    if (saved) await cache.delete(RETIRED);
     return;
   }
-  await Promise.all(urls.filter((u) => !keep.has(u)).map((u) => cache.delete(u)));
-  await cache.delete(RETIRED);
+  // (Also as one list, the record of workers before generations: one still running, or brought back, reads that.)
+  const all = (k) => [].concat(...gens.map((g) => g[k]));
+  const json = JSON.stringify({ gens, urls: all('urls'), clients: Array.from(new Set(all('clients'))), at: Math.max(...gens.map((g) => g.at)) });
+  if (json !== text) await cache.put(RETIRED, new Response(json, { headers: { 'content-type': 'application/json' } }));
 }
 
 /**
  * Fetch the app shell ('/'), cache its files (see the header), then swap it in.
  * The new HTML replaces the old one only once they are, so an offline load never
  * gets HTML pointing at chunks we don't have. After a deploy (the shell names
- * other hashed files) the old build's files are retired. `opening`: the tab
- * being opened from the old shell, when a visit to '/' asked for this.
+ * other hashed files) the old build's files are retired (see commit).
  */
-async function refreshShell(opening) {
+async function refreshShell() {
   const cache = await caches.open(CACHE);
   const res = await fetch('/', { cache: 'no-cache', credentials: 'same-origin' });
   if (!cacheable(res)) return;
@@ -247,13 +378,30 @@ async function refreshShell(opening) {
     // The same build: its files came with it (pages post what they load); anything its HTML names that is missing, again.
     await Promise.all(now.map((u) => cacheIfMissing(cache, u)));
   } else if (!(await pageFiles(cache, html, true, false)).ok && prev) return; // flaky network or a half-done deploy: keep the consistent old shell
-  await cache.put('/', res);
-  const deployed = !!prev && !prev.every((u) => now.indexOf(u) !== -1);
-  await serially(() => tidy(cache, deployed, opening));
-  if (!deployed) return; // first install, or same build
+  // (With no copy yet, even a partial one: better than none offline, and the page posts the rest.)
+  const done = await serially(() => commit(cache, '/', ORIGIN + '/', res, html, true));
+  if (!done || !done.old || extractAssets(done.old).every((u) => now.indexOf(u) !== -1)) return; // not stored, first install, or same build
   // A new deploy is cached and ready: let open tabs offer a reload.
   const tabs = await self.clients.matchAll({ type: 'window' });
   tabs.forEach((c) => c.postMessage({ type: 'updated' }));
+}
+
+/**
+ * After a page (`url`) was replaced by a new build's copy (from the network, for the tab `fresh`): '/'
+ * and the page's language home, when cached, are brought to the network's copy too (stored whole, see
+ * storePage). Unvisited pages fall back to them offline, and their old build can go although this
+ * visitor may never open them again.
+ */
+async function refreshHomes(cache, url, fresh) {
+  const path = new URL(url).pathname;
+  const homes = ['/', langHome(path)].filter((p, i, all) => p && p !== path && all.indexOf(p) === i);
+  await Promise.all(
+    homes.map(async (p) => {
+      if (!(await cache.match(p, MATCH))) return;
+      const res = await fetch(p, { cache: 'no-cache', credentials: 'same-origin' });
+      if (cacheable(res)) await storePage(cache, ORIGIN + p, res, fresh);
+    }),
+  );
 }
 
 self.addEventListener('install', (event) => {
@@ -281,14 +429,18 @@ self.addEventListener('message', (event) => {
     .map((u) => new URL(u))
     .filter((url) => !bypass(url))
     .map((url) => url.href);
+  const from = event.source && event.source.id;
   event.waitUntil(
     caches.open(CACHE).then((cache) =>
-      Promise.all(urls.map((u) => cacheIfMissing(cache, u)))
-        // The page has settled: now the chunks its pages' scripts can load later (see the header).
-        .then(() => Promise.all(urls.map((u) => followPage(cache, u))))
-        // Tabs of an old build may have closed since: their files can go.
-        .then(() => serially(() => tidy(cache, false)))
-        .catch(() => {}),
+      Promise.all([
+        // At once, not after the downloads below (a stalled one never holds it up): tabs of an old build may
+        // have closed since, and their files can go; what this tab loaded stays (see tidy).
+        serially(() => tidy(cache, null, urls, from)).catch(() => {}),
+        Promise.all(urls.map((u) => cacheIfMissing(cache, u)))
+          // The page has settled: now the chunks its pages' scripts can load later (see the header).
+          .then(() => Promise.all(urls.map((u) => followPage(cache, u))))
+          .catch(() => {}),
+      ]),
     ),
   );
 });
@@ -316,13 +468,21 @@ self.addEventListener('fetch', (event) => {
   if (url.origin !== ORIGIN || bypass(url, req.headers)) return;
 
   if (req.mode === 'navigate') {
+    // The tab may get an old build from the cache: one being opened (see opening) until it gets the network's page.
+    const tab = noteOpening(event.resultingClientId);
     if (url.pathname === '/') {
       // Stale-while-revalidate the shell; query strings (utm_*, etc.) are ignored.
       const hit = caches.open(CACHE).then((c) => c.match('/', MATCH));
-      event.respondWith(hit.then((res) => res || fetch(req)));
-      event.waitUntil(hit.then(() => refreshShell(event.resultingClientId)).catch(() => {}));
+      event.respondWith(
+        hit.then((res) => {
+          if (res) return res;
+          opening.delete(tab);
+          return fetch(req);
+        }),
+      );
+      event.waitUntil(hit.then(() => refreshShell()).catch(() => {}));
     } else {
-      event.respondWith(networkFirst(event, req));
+      event.respondWith(networkFirst(event, req, tab));
     }
   } else if (isStatic(url.pathname)) {
     event.respondWith(cacheFirst(event, req));
@@ -331,12 +491,15 @@ self.addEventListener('fetch', (event) => {
   }
 });
 
-async function networkFirst(event, req) {
+/** `tab`: the navigation's entry among the tabs being opened (see opening). */
+async function networkFirst(event, req, tab) {
   const cache = await caches.open(CACHE);
   return fetch(req).then(
     (res) => {
-      // Kept with its files only (see the header): until they are, the cached copy stays.
-      if (cacheable(res)) event.waitUntil(storePage(cache, req, res.clone()).catch(() => {}));
+      opening.delete(tab); // the network's page: the current build
+      // Kept with its files only (see the header): until they are, the cached copy stays. A new build: the homes follow.
+      const fresh = event.resultingClientId;
+      if (cacheable(res)) event.waitUntil(storePage(cache, req, res.clone(), fresh).then((r) => r && r.replaced && refreshHomes(cache, req.url, fresh)).catch(() => {}));
       return res;
     },
     async () => {
