@@ -6,8 +6,9 @@
  *
  * - Compiling scans the schema for resources (`$id`, `id`), anchors (`$anchor`, `$dynamicAnchor`, `$recursiveAnchor`,
  *   plain-name `$id`s before 2019-09), checks the value of every keyword it knows (the schema problems), resolves
- *   every `$ref` and compiles every subschema once. Remote references are never fetched: one that isn't a resource
- *   of this schema (or of `resources`, which only tests pass) is reported as unresolved.
+ *   every `$ref` and compiles every subschema once. Nothing is fetched here: a remote reference that isn't a resource
+ *   of this schema or of `resources` (schemas fetched when the visitor asked: ./remote.ts, and tests' external
+ *   schemas) is reported as unresolved.
  * - Validating walks the instance once per applicable subschema. Annotations for `unevaluatedProperties` and
  *   `unevaluatedItems` are tracked only when the schema uses them. Inside `anyOf`, `oneOf`, `not`, `if` and
  *   `contains` a branch is evaluated quietly (stopping at its first failure) unless its errors are wanted.
@@ -52,7 +53,7 @@ export interface CompileOptions {
   draft?: Draft;
   /** Check `format` (by default it is an annotation). */
   formats?: boolean;
-  /** Other schemas by URI (tests: the suite's external schemas). The app passes none: remote references aren't fetched. */
+  /** Other schemas by URI: schemas fetched when the visitor asked (./remote.ts), tests' external schemas. */
   resources?: Map<string, JNode>;
 }
 

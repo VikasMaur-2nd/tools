@@ -384,3 +384,71 @@ html[data-huge] .pane-sch {
     transition: none;
   }
 }
+
+/* ── remote schemas offered for fetching (RemoteRefs) ── */
+
+.sch-remote {
+  flex: none;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  margin: 8px 10px 0;
+  padding: 8px 10px;
+  border: 1px solid var(--line-2);
+  border-radius: 8px;
+  background: var(--bg-2);
+  font: 12.5px/1.45 var(--font-ui);
+}
+
+.sch-remote-head {
+  display: flex;
+  align-items: flex-start;
+  gap: 8px;
+}
+
+.sch-remote-head > svg {
+  flex: none;
+  margin-top: 2px;
+  color: var(--muted);
+}
+
+.sch-remote-head p {
+  flex: 1;
+  margin: 0;
+  color: var(--fg-2);
+}
+
+.sch-remote-head b {
+  color: var(--fg);
+  font-weight: 600;
+}
+
+.sch-urls {
+  max-height: 96px;
+  margin: 0;
+  padding: 0 0 0 23px;
+  overflow: auto;
+  list-style: none;
+}
+
+.sch-urls li {
+  display: flex;
+  flex-wrap: wrap;
+  column-gap: 8px;
+}
+
+.sch-url {
+  min-width: 0;
+  font: 12px/1.5 var(--font-mono);
+  overflow-wrap: anywhere;
+}
+
+.sch-fail {
+  color: var(--err);
+}
+
+.sch-fetch {
+  align-self: flex-start;
+  margin-left: 23px;
+  gap: 6px;
+}

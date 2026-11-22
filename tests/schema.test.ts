@@ -221,14 +221,15 @@ test('$id and $anchor resolve across embedded resources; relative refs use the n
   assert.ok(!run(d7, { x: 'a' }).valid);
 });
 
-test('remote references are never fetched: reported as unresolved, the rest still checked', () => {
+test('remote references aren\'t fetched by validating: reported as unresolved and offered, the rest still checked', () => {
   const r = run({ properties: { a: { $ref: 'https://example.com/missing.json' }, b: { type: 'string' }, c: { $ref: '#/$defs/nope' }, d: { $ref: '#nowhere' } } }, { a: 1, b: 2, c: 3, d: 4 });
   assert.deepEqual(problems(r), ['unresolved', 'unresolved', 'unresolved']);
   assert.deepEqual(r.problems.map((p) => p.params.why), ['remote', 'pointer', 'anchor']);
-  assert.equal(problemText('unresolved', r.problems[0].params, EN), "Can't resolve $ref https://example.com/missing.json: remote schemas are never fetched. Add it under $defs with its $id.");
+  assert.deepEqual(r.remote, ['https://example.com/missing.json']);
+  assert.equal(problemText('unresolved', r.problems[0].params, EN), "Can't resolve $ref https://example.com/missing.json: https://example.com/missing.json isn't fetched yet. Use Fetch referenced schemas, or add it under $defs with its $id.");
   assert.deepEqual(codes(r), ['type']);
   assert.ok(r.problems.every((p) => !p.warn && p.loc));
-  // The official meta-schemas aren't bundled either.
+  // The official meta-schemas aren't bundled either: offered for fetching like any other.
   assert.deepEqual(problems(run({ $ref: 'https://json-schema.org/draft/2020-12/schema' }, {})), ['unresolved']);
 });
 

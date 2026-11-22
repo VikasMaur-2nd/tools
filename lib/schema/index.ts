@@ -22,6 +22,11 @@ export interface ValidateRequest {
   max?: number;
   /** The document can't be read as its format (another format's syntax error): nothing to validate yet. */
   unread?: boolean;
+  /**
+   * Schemas fetched from the web when the visitor asked (lib/schema/remote.ts): URL (no fragment) → text. A `$ref`
+   * to one resolves to it, as to a resource of this schema; one to any other URL stays unresolved.
+   */
+  resources?: Record<string, string>;
 }
 
 /** A place in a text: [p, e) to select, and where p is. */
@@ -41,6 +46,8 @@ export interface Problem {
   loc: Loc | null;
   /** Validating met it: that part of the schema wasn't applied to the document (the result isn't complete). */
   reached?: boolean;
+  /** In a fetched schema (ValidateRequest.resources): its URL (`loc` is then null: it isn't in the schema text). */
+  doc?: string;
 }
 
 export interface InstanceError {
@@ -94,6 +101,8 @@ export interface ValidateResult {
   /** All instance errors, including those past `max`. */
   total: number;
   problems: Problem[];
+  /** The http(s) URLs (no fragment) of remote `$ref`s that didn't resolve: what fetching could bring in (none: absent). */
+  remote?: string[];
   ms: { parse: number; compile: number; validate: number };
 }
 
@@ -171,7 +180,7 @@ const syntax = (r: ParseResult, lines: Lines): SyntaxError | undefined => {
  */
 export class SchemaSession {
   private schemaKey = '';
-  private compiled: { sr: ParseResult; v: Validator | null } | null = null;
+  private compiled: { sr: ParseResult; v: Validator | null; docs: Map<JNode, string> } | null = null;
   private docText: string | null = null;
   private docParse: ParseResult | null = null;
 
@@ -179,23 +188,35 @@ export class SchemaSession {
     return run(req, this);
   }
 
-  /** The schema's parse and validator, compiled again only when its text or options changed. */
-  schema(req: ValidateRequest): { sr: ParseResult; v: Validator | null; ms: number } {
-    const key = `${req.draft ?? ''}|${req.formats ? 1 : 0}|${req.schema}`;
+  /**
+   * The schema's parse and validator, compiled again only when its text, options or fetched schemas changed (a URL's
+   * text never changes: the URLs say which). `docs`: each fetched schema's root, by its URL.
+   */
+  schema(req: ValidateRequest): { sr: ParseResult; v: Validator | null; docs: Map<JNode, string>; ms: number } {
+    const urls = Object.keys(req.resources ?? {});
+    const key = `${req.draft ?? ''}|${req.formats ? 1 : 0}|${urls.sort().join(' ')}|${req.schema}`;
     if (this.compiled && key === this.schemaKey) return { ...this.compiled, ms: 0 };
     const t = performance.now();
     const sr = parse(req.schema);
     let v: Validator | null = null;
+    const resources = new Map<string, JNode>();
+    const docs = new Map<JNode, string>();
+    for (const url of urls) {
+      const root = parse(req.resources![url]).root;
+      if (!root) continue;
+      resources.set(url, root);
+      docs.set(root, url);
+    }
     if (sr.root && !sr.error) {
       try {
-        v = new Validator(sr.root, { draft: req.draft ?? 2020, formats: req.formats });
+        v = new Validator(sr.root, { draft: req.draft ?? 2020, formats: req.formats, resources });
       } catch {
         v = null;
       }
     }
     this.schemaKey = key;
-    this.compiled = { sr, v };
-    return { sr, v, ms: performance.now() - t };
+    this.compiled = { sr, v, docs };
+    return { sr, v, docs, ms: performance.now() - t };
   }
 
   doc(text: string): { dr: ParseResult; ms: number } {
@@ -219,7 +240,15 @@ function run(req: ValidateRequest, session: SchemaSession): ValidateResult {
     out.state = 'empty-schema';
     return out;
   }
-  const { sr, v, ms } = session.schema(req);
+  const { sr, v, docs, ms } = session.schema(req);
+  /** The fetched schema a schema node is in (null: the schema text's). */
+  const docOf = (n: JNode): string | null => {
+    let r = n;
+    while (r.u) r = r.u;
+    return r === sr.root ? null : (docs.get(r) ?? '');
+  };
+  /** Where a schema node is in the schema text (null: in a fetched schema, which isn't). */
+  const keyLoc = (n: JNode | null) => (n && docOf(n) === null ? schemaKeyLoc(req.schema, schemaLines, n) : null);
   out.ms.compile = ms;
   if (!sr.root || sr.error) {
     out.state = 'schema-syntax';
@@ -240,8 +269,17 @@ function run(req: ValidateRequest, session: SchemaSession): ValidateResult {
     if (sr.issues.length) out.problems.push({ code: 'schemaLoose', params: {}, kw: '', warn: true, loc: schemaLines.loc(sr.issues[0].p, sr.issues[0].p + 1) });
     // (The schema's own problems, then this check's: a $ref loop depends on the document, so it is never kept for the next one.)
     const own = new Set(v.issues);
-    const list = [...v.issues, ...[...reached].filter((i) => !own.has(i))].map((i: SchemaIssue): Problem => ({ code: i.code, params: i.params, kw: i.kw, warn: i.warn, loc: i.at ? schemaKeyLoc(req.schema, schemaLines, i.at) : null, ...(reached.has(i) && { reached: true }) }));
-    out.problems.push(...list.sort((a, b) => (a.loc?.p ?? -1) - (b.loc?.p ?? -1)));
+    const list = [...v.issues, ...[...reached].filter((i) => !own.has(i))].map((i: SchemaIssue): Problem => {
+      const doc = i.at ? docOf(i.at) : null;
+      return { code: i.code, params: i.params, kw: i.kw, warn: i.warn, loc: keyLoc(i.at), ...(reached.has(i) && { reached: true }), ...(doc && { doc }) };
+    });
+    // (The schema text's in its order, then the fetched schemas'.)
+    const at = (x: Problem) => (x.doc ? Infinity : (x.loc?.p ?? -1));
+    out.problems.push(...list.sort((a, b) => at(a) - at(b)));
+    // What fetching could bring in: the http(s) URLs of remote refs that didn't resolve.
+    const remote = new Set<string>();
+    for (const i of v.issues) if (i.code === 'unresolved' && i.params.why === 'remote' && /^https?:\/\//i.test(String(i.params.uri))) remote.add(String(i.params.uri));
+    if (remote.size) out.remote = [...remote];
   };
 
   if (req.unread) {
@@ -285,7 +323,7 @@ function run(req: ValidateRequest, session: SchemaSession): ValidateResult {
         ...(dr.multi && { record: i + 1 }),
         loc: valueLoc(req.doc, docLines, f.inst, f.key),
         path: f.path,
-        schemaLoc: f.at ? schemaKeyLoc(req.schema, schemaLines, f.at) : null,
+        schemaLoc: keyLoc(f.at),
         ...(f.sub && { sub: f.sub.map(conv) }),
       });
       for (const f of res.errors) out.errors.push(conv(f));

@@ -152,6 +152,11 @@ export interface Events {
     size: (typeof HUGE_SIZE_LIST)[number];
     ms: number;
   };
+  /**
+   * The Schema view fetched the remote schemas a schema refers to, the visitor having asked: how many were asked
+   * for, fetched and failed, as ranges (countBucket). Never the URLs, hosts or schemas.
+   */
+  schema_refs_fetched: { requested: string; fetched: string; failed: string };
 }
 
 export type EventName = keyof Events;
@@ -294,6 +299,7 @@ const RULES: { [K in EventName]: { readonly [P in keyof Events[K]]-?: Rule } } =
   huge_gz: { outcome: HUGE_GZ_OUTCOMES, size: HUGE_SIZE_LIST, ms: 'number' },
   huge_edit: { op: HUGE_EDIT_OPS, from: HUGE_EDIT_FROM },
   huge_save: { how: HUGE_SAVE_HOW, outcome: HUGE_SAVE_OUTCOMES, size: HUGE_SIZE_LIST, ms: 'number' },
+  schema_refs_fetched: { requested: COUNTS, fetched: COUNTS, failed: COUNTS },
 };
 
 /** Allowed properties per event (see `clean`). */

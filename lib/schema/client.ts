@@ -31,6 +31,8 @@ interface Wanted {
 }
 
 const defaultLimit = (chars: number) => 5000 + Math.ceil(chars / 1e6) * 2000;
+/** No fetched schemas. */
+const NONE: Record<string, string> = {};
 
 export class SchemaClient {
   private port: Port | null = null;
@@ -38,6 +40,8 @@ export class SchemaClient {
   private wanted: Wanted | null = null;
   private sentDoc: string | null = null;
   private sentSchema: string | null = null;
+  /** The fetched schemas the worker has (the same object: not sent again). */
+  private sentResources: Record<string, string> | null = null;
   private seq = 0;
   private create: () => Port;
   private yieldAfter: number;
@@ -89,9 +93,11 @@ export class SchemaClient {
     }
     const id = ++this.seq;
     const { doc, schema } = w.req;
-    port.postMessage({ id, doc: doc === this.sentDoc ? null : doc, schema: schema === this.sentSchema ? null : schema, draft: w.req.draft, formats: w.req.formats, max: w.req.max ?? 1000, unread: w.req.unread });
+    const resources = w.req.resources ?? NONE;
+    port.postMessage({ id, doc: doc === this.sentDoc ? null : doc, schema: schema === this.sentSchema ? null : schema, draft: w.req.draft, formats: w.req.formats, max: w.req.max ?? 1000, unread: w.req.unread, resources: resources === this.sentResources ? null : resources });
     this.sentDoc = doc;
     this.sentSchema = schema;
+    this.sentResources = resources;
     const timer = setTimeout(() => this.expire(id), this.limit(doc.length + schema.length));
     this.busy = { ...w, id, since: performance.now(), timer };
   }
@@ -127,5 +133,6 @@ export class SchemaClient {
     this.port?.terminate();
     this.port = null;
     this.sentDoc = this.sentSchema = null;
+    this.sentResources = null;
   }
 }

@@ -10,6 +10,7 @@
  * whatever made it another one (an edit, a load, another input format or reading, huge mode).
  */
 import type { Outcome } from './client';
+import { REMOTE_MAX_COUNT, type FetchFailure, type Fetched } from './remote';
 import { DRAFTS, DRAFT_NAME, type Draft } from './drafts';
 import type { ValidateRequest, ValidateResult } from './index';
 
@@ -47,6 +48,20 @@ export interface SchemaHost {
   /** `on`: the document was valid (and the check complete); `level`: its errors. */
   track(feature: 'schema_validate', on: boolean, level: number): void;
   report(e: unknown): void;
+  /** Fetches remote schemas (lib/schema/remote.ts fetchSchemas): only ever called when the visitor asks. */
+  fetchSchemas(urls: string[], signal: AbortSignal, progress: (done: number) => void): Promise<Fetched[] | null>;
+  /** One click's fetch ended: how many were asked for, fetched, and failed (analytics: counts, never URLs). */
+  trackFetch(requested: number, fetched: number, failed: number): void;
+}
+
+/** Remote schemas (see fetchRemote): what is being fetched, and what couldn't be. */
+export interface RemoteState {
+  /** Fetching: how many of how many are done. */
+  fetching: { done: number; count: number } | null;
+  /** URLs that couldn't be fetched, and why (fetched again when asked again). */
+  failed: Record<string, FetchFailure>;
+  /** The list of URLs the visitor dismissed (joined by spaces): not offered again until another one comes. */
+  dismissed: string | null;
 }
 
 export interface SchemaState {
@@ -62,6 +77,7 @@ export interface SchemaState {
   file: string | null;
   /** The schema editor holds no text. */
   blank: boolean;
+  remote: RemoteState;
 }
 
 /** A schema handed over through the store (lib/engine/store.ts `schemaIn`). */
@@ -98,6 +114,12 @@ export class SchemaController {
   private docPending = false;
   private tracked = false;
   private inSeq = 0;
+  /** Schemas fetched from the web when the visitor asked, for this tab only (never saved, never in links): URL → text. */
+  private fetched = new Map<string, string>();
+  /** The same, for requests (a new object only when one more is fetched: the worker isn't sent it again). */
+  private resources: Record<string, string> | undefined;
+  /** The fetch going on (see fetchRemote): stopped by any change. */
+  private fetchStop: AbortController | null = null;
   /** Bumped by every change: a result of an older generation is dropped. */
   private gen = 0;
   /** Replacements of the schema asked for (see ask). */
@@ -107,7 +129,7 @@ export class SchemaController {
 
   constructor(host: SchemaHost) {
     this.host = host;
-    this.state = { result: null, stale: false, busy: false, outcome: 'ok', ...this.savedOpts(), file: null, blank: true };
+    this.state = { result: null, stale: false, busy: false, outcome: 'ok', ...this.savedOpts(), file: null, blank: true, remote: { fetching: null, failed: {}, dismissed: null } };
   }
 
   subscribe = (f: () => void) => {
@@ -160,6 +182,7 @@ export class SchemaController {
 
   detach() {
     this.gen++;
+    this.stopFetch();
     clearTimeout(this.timer);
     clearTimeout(this.busyTimer);
     if (this.persistTimer !== undefined) this.persistNow();
@@ -266,11 +289,68 @@ export class SchemaController {
       this.schedule(0);
     } else {
       this.gen++;
+      this.stopFetch();
       clearTimeout(this.timer);
       clearTimeout(this.busyTimer);
       this.set({ busy: false });
       this.host.main()?.setLineMarks(null);
     }
+  }
+
+  /**
+   * Fetches the remote schemas `urls` name (the result's `remote`), the visitor having asked: those not fetched
+   * yet, at most REMOTE_MAX_COUNT, then validates again with them. Nothing of it counts if anything changes meanwhile
+   * (the document, the schema, an option, the view closing): the fetch stops and its replies are dropped. What a
+   * fetched schema refers to in turn is listed again (fetched when asked again); failures are kept to say why.
+   */
+  fetchRemote(urls: string[]) {
+    const list = [...new Set(urls)].filter((u) => !this.fetched.has(u)).slice(0, REMOTE_MAX_COUNT);
+    if (!list.length || !this.open) return;
+    this.stopFetch();
+    const stop = (this.fetchStop = new AbortController());
+    const gen = this.gen;
+    const remote = (p: Partial<RemoteState>) => this.set({ remote: { ...this.state.remote, ...p } });
+    remote({ fetching: { done: 0, count: list.length } });
+    const progress = (done: number) => this.fetchStop === stop && remote({ fetching: { done, count: list.length } });
+    void this.host.fetchSchemas(list, stop.signal, progress).then(
+      (got) => {
+        // (Stopped, or anything changed since: for another schema or document, nothing of it applies.)
+        if (this.fetchStop !== stop || gen !== this.gen || !got) return;
+        this.fetchStop = null;
+        const failed = { ...this.state.remote.failed };
+        let ok = 0;
+        for (const r of got) {
+          if ('text' in r) {
+            this.fetched.set(r.url, r.text);
+            delete failed[r.url];
+            ok++;
+          } else failed[r.url] = r.failure;
+        }
+        this.host.trackFetch(list.length, ok, got.length - ok);
+        if (ok) this.resources = Object.fromEntries(this.fetched);
+        remote({ fetching: null, failed });
+        if (ok) this.schedule(0);
+      },
+      (e) => {
+        if (this.fetchStop !== stop) return;
+        this.fetchStop = null;
+        this.host.report(e);
+        remote({ fetching: null });
+      },
+    );
+  }
+
+  /** Hides the offer to fetch `urls` (until other URLs come). */
+  dismissRemote(urls: string[]) {
+    this.set({ remote: { ...this.state.remote, dismissed: urls.join(' ') } });
+  }
+
+  /** Stops the fetch going on, if any: its replies are dropped. */
+  private stopFetch() {
+    if (!this.fetchStop) return;
+    this.fetchStop.abort();
+    this.fetchStop = null;
+    this.set({ remote: { ...this.state.remote, fetching: null } });
   }
 
   setOpts(p: Partial<Pick<SchemaState, 'draft' | 'formats'>>) {
@@ -311,6 +391,7 @@ export class SchemaController {
   /** A new generation (the shown result is stale from now on), checked after `ms` (-1: not yet, a text is on its way). */
   private schedule(ms: number) {
     this.gen++;
+    this.stopFetch();
     if (this.state.result) this.set({ stale: true });
     clearTimeout(this.timer);
     if (!this.open || ms < 0 || this.docPending) return;
@@ -331,7 +412,7 @@ export class SchemaController {
     const client = (this.client ??= this.host.validator());
     clearTimeout(this.busyTimer);
     this.busyTimer = setTimeout(() => this.set({ busy: true }), 200);
-    const req = { doc, schema, draft: this.state.draft, formats: this.state.formats, max: 1000, ...(this.unread && { unread: true }) };
+    const req = { doc, schema, draft: this.state.draft, formats: this.state.formats, max: 1000, ...(this.unread && { unread: true }), ...(this.resources && { resources: this.resources }) };
     client.validate(req, (o: Outcome) => {
       // (Something changed since this was asked: the next run shows its own result. The document isn't the one
       // checked any more, whatever made it another: the new one's text comes, see setDoc.)

@@ -3,7 +3,7 @@
 // Valid and undoing (Valid, never "Validating…" while a check is on its way), a broken schema, Check formats, the
 // phone layout, and from the home page Alt+7, Generate from the document and Close; the view toolbar at the widths
 // where its row is full; a German page's strings, also after a failed load; the palette's Generate on a fresh page;
-// share links with a schema; errors' places in YAML and CSV input.
+// share links with a schema; errors' places in YAML and CSV input; remote $refs fetched only when asked.
 import { defaults, test } from '../../lib/api.mjs';
 import { MOD, docOf, enc, resetClip, setDoc, until, waitClip } from './_helpers.mjs';
 
@@ -441,4 +441,52 @@ test('input in another format: errors show and select their places in it, YAML a
   await page.locator(`${ROWS}[data-i="0"] .sch-msg`).click();
   t.check((await selected(page)) === 'input:x1', 'a click selects the cell', await selected(page));
   t.check(!t.errors.length, 'no page errors', t.errors.slice(0, 3));
+});
+
+// (The 404 asked for on purpose is logged by the browser: the test checks the other errors itself.)
+test('remote $refs: nothing fetched until asked; then each schema once, what it refers to offered next, failures said', { allowErrors: true }, async (t) => {
+  const { page } = t;
+  const requests = [];
+  const site = {
+    '/user.json': { type: 'object', properties: { id: { $ref: 'id.json' } } },
+    '/id.json': { type: 'integer' },
+  };
+  await page.route('https://schemas.example.test/**', (route) => {
+    const path = new URL(route.request().url()).pathname;
+    requests.push(path);
+    const body = site[path];
+    return route.fulfill(body ? { status: 200, headers: { 'access-control-allow-origin': '*', 'content-type': 'application/schema+json' }, body: JSON.stringify(body) } : { status: 404, headers: { 'access-control-allow-origin': '*' }, body: 'not found' });
+  });
+  await t.open('/');
+  t.check(await setDoc(page, '{"id": "x"}'), 'a document');
+  await page.keyboard.press('Alt+7');
+  await page.evaluate((text) => {
+    const ta = document.getElementById('schema-input');
+    ta.focus();
+    ta.select();
+    document.execCommand('insertText', false, text);
+  }, JSON.stringify({ allOf: [{ $ref: 'https://schemas.example.test/user.json' }, { $ref: 'https://schemas.example.test/missing.json#/$defs/x' }] }));
+  t.check(!!(await waitState(page, /^Not fully checked/)), 'not fully checked', await state(page));
+  const urls = () => page.evaluate(() => [...document.querySelectorAll('.sch-remote .sch-urls li')].map((li) => li.textContent));
+  const offered = await until(page, () => document.querySelectorAll('.sch-remote .sch-urls li').length === 2, null, { timeout: 5000 });
+  t.check(offered === true && JSON.stringify(await urls()) === JSON.stringify(['https://schemas.example.test/user.json', 'https://schemas.example.test/missing.json']), 'the URLs are listed, without fragments', await urls());
+  await page.waitForTimeout(500);
+  t.check(requests.length === 0, 'nothing is requested before the click', requests);
+  // Fetched: user.json resolves; missing.json says why; id.json, which user.json refers to, is offered next.
+  await page.getByRole('button', { name: 'Fetch referenced schemas' }).click();
+  const next = await until(page, () => {
+    const items = [...document.querySelectorAll('.sch-remote .sch-urls li')].map((li) => li.textContent);
+    return items.length === 2 && items.some((x) => x.startsWith('https://schemas.example.test/id.json')) && items;
+  }, null, { timeout: 15_000 });
+  t.check(!!next && next.some((x) => /missing\.json.*Request failed: 404/.test(x)), 'the failed one says why; the next one is offered', next);
+  t.check(JSON.stringify([...requests].sort()) === JSON.stringify(['/missing.json', '/user.json']), 'each fetched once, nothing else', requests);
+  t.check(/^Not fully checked/.test(await state(page)), 'still not fully checked', await state(page));
+  // Asked again: id.json comes (missing.json is asked again too); id "x" isn't an integer.
+  await page.getByRole('button', { name: 'Fetch referenced schemas' }).click();
+  t.check(!!(await waitState(page, /^1 error/)), 'id.json applied: one error', await state(page));
+  t.check(JSON.stringify([...requests].sort()) === JSON.stringify(['/id.json', '/missing.json', '/missing.json', '/user.json']), 'id.json once, the failed one retried', requests);
+  // Dismissed: the offer goes.
+  await page.getByRole('button', { name: 'Dismiss' }).first().click();
+  t.check(!!(await until(page, () => !document.querySelector('.sch-remote'), null, { timeout: 5000 })), 'dismissed');
+  t.check(!t.errors.filter((e) => !/404|Failed to load resource/.test(e)).length, 'no page errors', t.errors.slice(0, 3));
 });

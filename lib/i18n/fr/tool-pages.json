@@ -2017,7 +2017,7 @@
     ]
   },
   "json-schema-validator": {
-    "hash": "95d2422436de",
+    "hash": "a7967349506e",
     "title": "Validateur JSON Schema : valider JSON en ligne",
     "description": "Validez du JSON avec un JSON Schema : drafts 2020-12, 2019-09, 07, 06 et 04. Chaque erreur avec sa ligne, son chemin et sa règle. Aucun envoi.",
     "heading": "Validateur JSON Schema",
@@ -2080,7 +2080,7 @@
         "heading": "Références, schémas distants et confidentialité",
         "paragraphs": [
           "$ref résout les JSON Pointers comme #/$defs/address, les ancres comme #address et les autres ressources intégrées au même schéma par leur $id, y compris avec des URI relatives. Une boucle qui applique de nouveau le même schéma à la même valeur est signalée au lieu de bloquer la page.",
-          "Les références distantes ne sont jamais récupérées : un $ref vers une URL qui n'est pas une ressource de ce schéma apparaît comme non résolu, et cette partie du document n'est pas vérifiée ; un document sans autre erreur affiche alors Vérification incomplète au lieu de Valide. Il en va de même pour un mot-clé dont la valeur est invalide. Pour utiliser ce schéma, ajoutez-le dans $defs avec son $id ; les références vers cette URL sont alors résolues localement. Les métaschémas officiels ne sont pas chargés non plus : le validateur vérifie lui-même la valeur de chaque mot-clé qu'il connaît."
+          "Un $ref vers un schéma sur le web n'est récupéré que si vous le demandez. D'ici là, il apparaît comme non résolu et cette partie du document n'est pas vérifiée ; un document sans autre erreur affiche alors Vérification incomplète au lieu de Valide, et il en va de même pour un mot-clé dont la valeur est invalide. Les résultats listent chaque adresse avec un bouton Récupérer les schémas référencés, qui les récupère directement depuis votre navigateur, sans cookies, puis valide à nouveau ; les adresses auxquelles ces schémas font référence sont listées pour un autre clic. Les schémas récupérés restent dans cet onglet et ne sont jamais enregistrés ni partagés. Une adresse qui échoue dit pourquoi (le plus souvent un serveur qui n'autorise pas les requêtes cross-origin) et reste non résolue. Pour travailler sans rien récupérer, ajoutez le schéma sous $defs avec son $id : les références à cette URL se résolvent alors localement. Les méta-schémas officiels ne sont pas chargés pour $schema : le validateur vérifie lui-même la valeur de chaque mot-clé qu'il connaît."
         ]
       },
       {

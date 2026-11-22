@@ -85,9 +85,12 @@ export function errorText(code: string, params: Params, t: T): string {
 export function problemText(code: string, p: Params, t: T): string {
   switch (code) {
     case 'unresolved':
-      return p.why === 'remote'
-        ? t("Can't resolve $ref {ref}: remote schemas are never fetched. Add it under $defs with its $id.", p)
-        : p.why === 'pointer'
+      // (A web address can be fetched when the visitor asks: the Schema view offers it, lib/schema/remote.ts.)
+      return p.why === 'remote' && /^https?:\/\//i.test(String(p.uri))
+        ? t("Can't resolve $ref {ref}: {uri} isn't fetched yet. Use Fetch referenced schemas, or add it under $defs with its $id.", p)
+        : p.why === 'remote'
+          ? t("Can't resolve $ref {ref}: it isn't part of this schema. Add it under $defs with its $id.", p)
+          : p.why === 'pointer'
           ? t("Can't resolve $ref {ref}: nothing is at that JSON Pointer", p)
           : t("Can't resolve $ref {ref}: no anchor has that name", p);
     case 'refNotSchema':
