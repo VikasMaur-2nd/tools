@@ -490,6 +490,7 @@
   "toast.noShare": "이 브라우저는 공유 링크를 만들 수 없습니다",
   "toast.shareLinkTooLarge": "공유 링크가 너무 커서 열 수 없습니다",
   "toast.sharedLoaded": "공유된 JSON을 불러왔습니다",
+  "toast.linkLoadFailed": "링크를 열 수 없습니다. 연결을 확인한 다음 페이지를 새로고침해 주십시오.",
   "toast.sharedCompareLoaded": "공유된 비교를 불러왔습니다",
   "toast.sharedSchemaLoaded": "공유된 JSON과 스키마를 불러왔습니다",
   "toast.sharedSchemaOnly": "공유된 스키마를 불러왔습니다",

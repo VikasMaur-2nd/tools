@@ -504,6 +504,7 @@
   "toast.noShare": "Seu navegador não consegue criar links de compartilhamento",
   "toast.shareLinkTooLarge": "Este link de compartilhamento é grande demais para abrir",
   "toast.sharedLoaded": "JSON compartilhado carregado",
+  "toast.linkLoadFailed": "Não foi possível abrir o link. Verifique sua conexão e depois recarregue a página.",
   "toast.sharedCompareLoaded": "Comparação compartilhada carregada",
   "toast.sharedSchemaLoaded": "JSON compartilhado e seu schema carregados",
   "toast.sharedSchemaOnly": "Schema compartilhado carregado",

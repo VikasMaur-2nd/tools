@@ -626,6 +626,8 @@
   "toast.noShare": "Your browser can't create share links",
   "toast.shareLinkTooLarge": "That share link is too large to open",
   "toast.sharedLoaded": "Loaded shared JSON",
+  "toast.linkLoadFailed": "Couldn't open the link. Check your connection, then reload the page.",
+  "toast.linkLoadFailed._context": "Error toast when a share link was opened but the part of the app that reads links could not be downloaded (usually offline before it was cached). The link stays in the address bar, so reloading opens it.",
   "toast.sharedCompareLoaded": "Loaded the shared comparison",
   "toast.sharedSchemaLoaded": "Loaded shared JSON and its schema",
   "toast.sharedSchemaLoaded._context": "Toast after opening a share link that carries a JSON document and the JSON Schema it is validated against (the Schema view opens).",

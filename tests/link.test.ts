@@ -235,6 +235,44 @@ test('the first load knows a link when it sees one, and loads the code to read i
   }
 });
 
+test('CSV links carry how CSV reads: only with in=csv, only what isn\'t the default, invalid values ignored', async () => {
+  // (Links kept in=csv but the reader's own separator, header and typing read the document.)
+  const doc = { text: 'a;b\n1;2' };
+  const csv = (c: Partial<{ delimiter: ',' | ';' | '\t' | '|' | 'auto'; header: boolean; types: boolean }>) => ({ delimiter: 'auto' as const, header: true, types: true, ...c });
+  for (const [delimiter, name] of [[',', 'comma'], [';', 'semicolon'], ['\t', 'tab'], ['|', 'pipe']] as const) {
+    const hash = await linkHash({ a: doc, in: 'csv', csv: csv({ delimiter, header: false, types: false }) });
+    assert.match(hash, new RegExp(`&in=csv&delimiter=${name}&header=0&types=0$`));
+    assert.deepEqual((parseLink(hash) as { csv: unknown }).csv, { delimiter, header: false, types: false });
+  }
+  const plain = await linkHash({ a: doc, in: 'csv', csv: csv({}) });
+  assert.match(plain, /&in=csv$/);
+  assert.deepEqual((parseLink(plain) as { csv: unknown }).csv, csv({}), 'a link without them reads with the defaults');
+  assert.doesNotMatch(await linkHash({ a: doc, in: 'yaml', csv: csv({ header: false }) }), /header=/, 'only with in=csv');
+  assert.equal('csv' in (parseLink('#a=abc&in=yaml&header=0') as object), false);
+  assert.equal('csv' in (parseLink('#a=abc&header=0') as object), false);
+  const read = (extra: string) => (parseLink('#a=abc&in=csv' + extra) as { csv: unknown }).csv;
+  for (const bad of ['&delimiter=%3B', '&delimiter=;', '&delimiter=Comma', '&delimiter=auto', '&delimiter=toString', '&header=false', '&header=no', '&types=', '&types=1']) assert.deepEqual(read(bad), csv({}), bad);
+  assert.deepEqual(read('&types=0&delimiter=tab'), csv({ delimiter: '\t', types: false }));
+  // The handoff: the same names, header and types as booleans.
+  const hand = (extra: Record<string, unknown>) => (readHandoff({ toolkumar: 'open', a: 'a;b', in: 'csv', ...extra }) as { csv?: unknown }).csv;
+  assert.deepEqual(hand({ delimiter: 'pipe', header: false, types: false }), { delimiter: '|', header: false, types: false });
+  assert.deepEqual(hand({ delimiter: ';', header: 'false', types: 0 }), csv({}));
+  assert.equal(hand({}) !== undefined, true);
+  assert.equal('csv' in (readHandoff({ toolkumar: 'open', a: 'x: 1', in: 'yaml', header: false }) as object), false);
+});
+
+test('the published link functions leave out a separator they can\'t encode instead of failing', async () => {
+  // (Half an emoji made encodeURIComponent throw: the whole link was rejected.)
+  const half = '🙂'.slice(0, 1);
+  const js = ts.transpileModule(`${LINK_SNIPPET_TS}\nreturn toolKumarLink;`, { compilerOptions: { target: ts.ScriptTarget.ES2022 } }).outputText;
+  const tsLink = new Function(js)() as typeof toolKumarLink;
+  for (const make of [toolKumarLink, tsLink]) {
+    const url = await make('{"a":{"b":1}}', { view: 'convert', to: 'flatten', sep: half, arrays: 'dot' });
+    assert.doesNotMatch(url, /sep=/);
+    assert.deepEqual((parseLink(new URL(url).hash) as { flat: unknown }).flat, { ...FLAT_DEFAULTS, arrays: 'dot' });
+  }
+});
+
 test('link reach follows the measured browser limits (warnings only)', () => {
   assert.equal(linkReach(2_000), 'all');
   assert.equal(linkReach(512_000), 'all', "Chrome's and Edge's address bar keeps 512,000 pasted characters");

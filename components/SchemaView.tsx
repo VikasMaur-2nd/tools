@@ -312,7 +312,11 @@ const SchemaPane = memo(function SchemaPane({ hidden }: { hidden: boolean }) {
     if (!engine || !el) return;
     const Ed = Object.getPrototypeOf(engine.ed).constructor as typeof Editor;
     const ed = new Ed(el, {
-      change: () => ctl.edited(),
+      change: () => {
+        ctl.edited();
+        // (A schema a link is still bringing is older now: it no longer replaces this one.)
+        engine.schemaChanged();
+      },
       caret: () => undefined,
       nav: () => undefined,
       escape: () => resultsHost?.querySelector<HTMLElement>('.sch-list, .sch-empty')?.focus(),

@@ -7,6 +7,11 @@
  *   /#a=<doc>&view=tree           open in a view: format, tree, table, graph, convert, compare, schema
  *   /#a=<doc>&view=convert&to=go  open Convert with a target (lib/engine/targets.ts ids)
  *   /#a=<doc>&in=yaml             document a is YAML (yaml, csv, xml, toml): it opens as itself, its JSON in the views
+ *   /#a=<doc>&in=csv&delimiter=semicolon&header=0&types=0
+ *                                 how CSV reads, only with in=csv and only where it isn't the default: delimiter
+ *                                 (comma, semicolon, tab, pipe; default: detected), header (0: no header row) and
+ *                                 types (0: values stay strings). The handoff takes them too (header and types as
+ *                                 booleans). They are for that visit, as flatten's options are.
  *   /#a=<doc>&view=convert&to=flatten&sep=%2F&arrays=dot&depth=2&escape=0
  *                                 flatten's (and unflatten's) options, only with those targets: sep (1 to 8
  *                                 characters, percent-encoded; no digits, backslashes or brackets), arrays (bracket,
@@ -30,7 +35,7 @@
  */
 import { TARGETS, isFlat } from './engine/targets';
 import { MAX_DOCUMENT, SOURCE_FORMATS, linkIn } from './engine/rules';
-import type { FlatSettings, SourceFormat, View } from './engine/store';
+import type { CsvDelimiter, FlatSettings, SourceFormat, View } from './engine/store';
 
 const VIEWS: readonly View[] = ['format', 'tree', 'table', 'graph', 'convert', 'compare', 'schema'];
 /**
@@ -85,13 +90,22 @@ export interface LinkRequest {
   /** With view 'schema' and a schema (b): the draft for a schema without $schema by name, and Check formats. */
   draft?: string;
   formats?: boolean;
+  /** With in 'csv': how it reads (see CsvReading). A link writes what isn't the default. */
+  csv?: CsvReading;
+}
+
+/** How a CSV document reads, which its JSON depends on: its separator ('auto': detected), a header row, typed values. */
+export interface CsvReading {
+  delimiter: CsvDelimiter;
+  header: boolean;
+  types: boolean;
 }
 
 /** A document as a link carries it: still encoded (see `decodeDoc`), or a URL. */
 export type LinkSource = { data: string } | { url: string };
 /** What a fragment asks for: nothing (an ordinary anchor), a handoff, documents, or something broken. */
 /** `draft` and `formats`: with view=schema, as written (the Schema view reads them: see the header). */
-export type ParsedLink = null | 'handoff' | 'broken' | { a?: LinkSource; b?: LinkSource; view?: View; to?: string; in?: Exclude<SourceFormat, 'json'>; flat?: FlatSettings; draft?: string | null; formats?: string | null };
+export type ParsedLink = null | 'handoff' | 'broken' | { a?: LinkSource; b?: LinkSource; view?: View; to?: string; in?: Exclude<SourceFormat, 'json'>; flat?: FlatSettings; draft?: string | null; formats?: string | null; csv?: CsvReading };
 
 /** A format a link names for its document (`in`), other than JSON. */
 const sourceIn = (v: unknown) => SOURCE_FORMATS.find((f): f is Exclude<SourceFormat, 'json'> => f !== 'json' && f === v);
@@ -105,6 +119,15 @@ const flatOf = (sep: unknown, arrays: unknown, depth: unknown, escape: unknown):
   arrays: arrays === 'dot' || arrays === 'keep' ? arrays : 'bracket',
   escape: escape !== false,
   depth: depth === 1 || depth === 2 || depth === 3 ? depth : 0,
+});
+
+/** CSV separators by the names links and handoffs give them. */
+const DELIMITERS: Record<string, CsvDelimiter> = { comma: ',', semicolon: ';', tab: '\t', pipe: '|' };
+/** CSV's reading from a link or a handoff: the valid values, the defaults for the rest. */
+const csvOf = (delimiter: unknown, header: unknown, types: unknown): CsvReading => ({
+  delimiter: typeof delimiter === 'string' && Object.hasOwn(DELIMITERS, delimiter) ? DELIMITERS[delimiter] : 'auto',
+  header: header !== false,
+  types: types !== false,
 });
 
 const DATA = /^[A-Za-z0-9_-]+$/;
@@ -135,7 +158,8 @@ export function parseLink(hash: string): ParsedLink {
   } catch {}
   const depth = p.get('depth');
   const flat = to && isFlat(to) ? flatOf(sep, p.get('arrays'), depth?.length === 1 ? +depth : 0, p.get('escape') !== '0') : undefined;
-  return { a, b, view, to, ...(fmt && { in: fmt }), ...(flat && { flat }), ...(view === 'schema' && { draft: p.get('draft'), formats: p.get('formats') }) };
+  const csv = fmt === 'csv' ? csvOf(p.get('delimiter'), p.get('header') !== '0', p.get('types') !== '0') : undefined;
+  return { a, b, view, to, ...(fmt && { in: fmt }), ...(flat && { flat }), ...(view === 'schema' && { draft: p.get('draft'), formats: p.get('formats') }), ...(csv && { csv }) };
 }
 
 /** The fragment for a request, `#` included. Unknown views and targets are left out. */
@@ -161,6 +185,13 @@ export async function linkHash(r: LinkRequest): Promise<string> {
     }
   }
   if (r.a && sourceIn(r.in)) parts.push(`in=${r.in}`);
+  const c = r.csv;
+  if (r.a && r.in === 'csv' && c) {
+    const name = Object.keys(DELIMITERS).find((k) => DELIMITERS[k] === c.delimiter);
+    if (name) parts.push('delimiter=' + name);
+    if (!c.header) parts.push('header=0');
+    if (!c.types) parts.push('types=0');
+  }
   if (r.view === 'schema' && r.b) {
     if (r.draft) parts.push(`draft=${encodeURIComponent(r.draft)}`);
     if (r.formats) parts.push('formats=1');
@@ -206,7 +237,7 @@ export type HandoffReply = { toolkumar: 'ready'; version: number } | { toolkumar
 /** A handoff `open` message as a request, or the reason it can't be one (null: not a Tool Kumar message). */
 export function readHandoff(data: unknown): LinkRequest | 'invalid' | 'too_large' | null {
   if (!data || typeof data !== 'object' || (data as { toolkumar?: unknown }).toolkumar !== 'open') return null;
-  const { a, b, view, to, in: fmt, sep, arrays, depth, escape } = data as Record<string, unknown>;
+  const { a, b, view, to, in: fmt, sep, arrays, depth, escape, delimiter, header, types } = data as Record<string, unknown>;
   const ok = (v: unknown) => v === undefined || typeof v === 'string';
   if (!ok(a) || !ok(b) || (a === undefined && b === undefined)) return 'invalid';
   if (((a as string | undefined)?.length ?? 0) > MAX_DOCUMENT || ((b as string | undefined)?.length ?? 0) > MAX_DOCUMENT) return 'too_large';
@@ -217,6 +248,7 @@ export function readHandoff(data: unknown): LinkRequest | 'invalid' | 'too_large
     view: VIEWS.find((v) => v === view),
     to: target,
     ...(typeof a === 'string' && sourceIn(fmt) && { in: sourceIn(fmt) }),
+    ...(typeof a === 'string' && fmt === 'csv' && { csv: csvOf(delimiter, header, types) }),
     // (As a link's, but a number and a boolean.)
     ...(target && isFlat(target) && { flat: flatOf(sep, arrays, depth, escape) }),
   };
