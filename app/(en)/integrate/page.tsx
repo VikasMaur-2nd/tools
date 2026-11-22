@@ -228,6 +228,38 @@ https://tools.vikasmaur.com/#a=<document>&b=<schema>&view=schema`}</Code>
                 <th scope="row"><Part cls="lk-k">formats</Part></th>
                 <td>Optional, with a schema: <Part cls="lk-v">1</Part> checks <code>format</code> (email, date-time, uri…), which is otherwise an annotation.</td>
               </tr>
+              <tr>
+                <th scope="row"><Part cls="lk-k">in</Part></th>
+                <td>
+                  Optional. The format of <Part cls="lk-k">a</Part> when it isn&apos;t JSON: <Part cls="lk-v">yaml</Part>, <Part cls="lk-v">csv</Part>,{' '}
+                  <Part cls="lk-v">xml</Part> or <Part cls="lk-v">toml</Part>. The document opens as itself, in its own format in the input, and the
+                  views show its JSON. Without it, a document is read as JSON, or by its file name when it comes from a URL (.yaml, .csv, .tsv,
+                  .xml, .toml).
+                </td>
+              </tr>
+              <tr>
+                <th scope="row"><Part cls="lk-k">delimiter</Part></th>
+                <td>
+                  Optional, with <Pair name="in" value="csv" />: what separates the fields, <Part cls="lk-v">comma</Part>,{' '}
+                  <Part cls="lk-v">semicolon</Part>, <Part cls="lk-v">tab</Part> or <Part cls="lk-v">pipe</Part>. Without it, the separator is
+                  detected, or taken from a first line such as <code>sep=;</code> (as Excel writes it).
+                </td>
+              </tr>
+              <tr>
+                <th scope="row"><Part cls="lk-k">header</Part></th>
+                <td>
+                  Optional, with <Pair name="in" value="csv" />: <Part cls="lk-v">0</Part> when the first row is data, not column names: every row
+                  becomes an array. By default the first row names the columns and each row after it becomes an object.
+                </td>
+              </tr>
+              <tr>
+                <th scope="row"><Part cls="lk-k">types</Part></th>
+                <td>
+                  Optional, with <Pair name="in" value="csv" />: <Part cls="lk-v">0</Part> keeps every value a string. By default unquoted numbers,
+                  true and false become JSON numbers and booleans, and empty fields null. A CSV link opens with exactly these options, the
+                  defaults for those it leaves out, for that visit only: readers keep their own CSV settings for their next one.
+                </td>
+              </tr>
             </tbody>
           </table>
         </div>
@@ -278,7 +310,8 @@ https://tools.vikasmaur.com/#a=<document>&b=<schema>&view=schema`}</Code>
         <CodeSnippet name="toolKumarLink" js={LINK_SNIPPET} ts={LINK_SNIPPET_TS} />
         <Code lang="javascript" links>{`const link = await toolKumarLink(response, { view: 'tree' });
 const diff = await toolKumarLink(before, { compare: after });
-const checked = await toolKumarLink(response, { schema: userSchema });`}</Code>
+const checked = await toolKumarLink(response, { schema: userSchema });
+const sheet = await toolKumarLink(csvText, { in: 'csv', delimiter: 'semicolon' });`}</Code>
         <p>
           A link to a URL needs no compression: <LinkCode lang="javascript">{"'https://tools.vikasmaur.com/#a=' + encodeURIComponent(url)"}</LinkCode>. The reader&apos;s browser
           fetches it, so its server must allow cross-origin requests (CORS); public GitHub files and most public APIs do. In other languages:
@@ -312,7 +345,12 @@ link = "https://tools.vikasmaur.com/#a=" + base64.urlsafe_b64encode(raw).decode(
             Your page sends <code>{'{ toolkumar: "open", a, b, view, to }'}</code> to that tab, where <code>a</code> and <code>b</code> are the JSON
             text. With <code>to: &quot;flatten&quot;</code> or <code>&quot;unflatten&quot;</code> it may add <code>sep</code>, <code>arrays</code>,{' '}
             <code>depth</code> (a number) and <code>escape</code> (a boolean), as for links.
-            With <code>{'view: "schema"'}</code>, <code>b</code> is the JSON Schema.
+            With <code>{'view: "schema"'}</code>, <code>b</code> is the JSON Schema. With <code>in</code> (<code>&quot;yaml&quot;</code>,{' '}
+            <code>&quot;csv&quot;</code>, <code>&quot;xml&quot;</code> or <code>&quot;toml&quot;</code>), <code>a</code> is text in that format;
+            with <code>in: &quot;csv&quot;</code> it may add <code>delimiter</code> (<code>&quot;comma&quot;</code>,{' '}
+            <code>&quot;semicolon&quot;</code>, <code>&quot;tab&quot;</code> or <code>&quot;pipe&quot;</code>), and <code>header</code> and{' '}
+            <code>types</code> (booleans: <code>false</code> for <Pair name="header" value="0" /> and <Pair name="types" value="0" />),
+            also for that visit only.
           </li>
           <li>Tool Kumar opens it and answers <code>{'{ toolkumar: "opened" }'}</code>, or <code>{'{ toolkumar: "error", reason }'}</code>.</li>
         </ol>

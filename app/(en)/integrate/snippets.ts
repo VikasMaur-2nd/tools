@@ -13,9 +13,13 @@ export const LINK_SNIPPET = `// A link that opens \`json\` in Tool Kumar: a JSON
 // json against it), view ('tree', 'table', 'graph'…), to (Convert
 // target), and with to 'flatten' or 'unflatten': sep (default '.'),
 // arrays ('dot' or 'keep'; default a[0]), depth (1 to 3; default all),
-// escape (false).
+// escape (false). in ('yaml', 'csv', 'xml' or 'toml': json is text in
+// that format), and with in 'csv': delimiter ('comma', 'semicolon',
+// 'tab' or 'pipe'; default detected), header (false: no header row),
+// types (false: every value a string).
 async function toolKumarLink(json, options = {}) {
   const { compare, schema, view, to, sep, arrays, depth, escape } = options;
+  const { in: format, delimiter, header, types } = options;
   const encode = async (value) => {
     const text = typeof value === 'string' ? value : JSON.stringify(value);
     const stream = new Blob([text]).stream()
@@ -40,16 +44,21 @@ async function toolKumarLink(json, options = {}) {
   if (arrays) hash += '&arrays=' + arrays;
   if (depth) hash += '&depth=' + depth;
   if (escape === false) hash += '&escape=0';
+  if (format) hash += '&in=' + format;
+  if (delimiter) hash += '&delimiter=' + delimiter;
+  if (header === false) hash += '&header=0';
+  if (types === false) hash += '&types=0';
   return 'https://tools.vikasmaur.com/#' + hash;
 }`;
 
 /** Method 2: opens a tab and hands the JSON over with postMessage, for documents too big for a link. */
 export const HANDOFF_SNIPPET = `// Opens \`json\` in a new Tool Kumar tab, any size. Call it straight
 // from a click. Options: compare, schema, view, to, sep, arrays, depth,
-// escape (as for links). Resolves with the tab once Tool Kumar has the
-// document.
+// escape, in, delimiter, header, types (as for links). Resolves with the
+// tab once Tool Kumar has the document.
 function openInToolKumar(json, options = {}) {
   const { compare, schema, view, to, sep, arrays, depth, escape } = options;
+  const { in: format, delimiter, header, types } = options;
   const origin = 'https://tools.vikasmaur.com';
   const text = (value) => typeof value === 'string' || value === undefined
     ? value : JSON.stringify(value);
@@ -71,7 +80,10 @@ function openInToolKumar(json, options = {}) {
         const a = text(json);
         const b = text(schema === undefined ? compare : schema);
         const v = schema === undefined ? view : 'schema';
-        tab.postMessage({ toolkumar: 'open', a, b, view: v, to, sep, arrays, depth, escape }, origin);
+        tab.postMessage({
+          toolkumar: 'open', a, b, view: v, to, sep, arrays, depth, escape,
+          in: format, delimiter, header, types,
+        }, origin);
       } else if (kind === 'opened') done();
       else if (kind === 'error') fail(e.data.reason);
     }
@@ -105,6 +117,14 @@ ${targetLines.join('\n')};
   depth?: 1 | 2 | 3;
   /** false: keys stay as written (default: escaped with backslashes). */
   escape?: boolean;
+  /** The document's format when it isn't JSON: json is text in that format. */
+  in?: 'yaml' | 'csv' | 'xml' | 'toml';
+  /** With in: 'csv': what separates the fields (default: detected). */
+  delimiter?: 'comma' | 'semicolon' | 'tab' | 'pipe';
+  /** With in: 'csv': false when the first row is data, not column names. */
+  header?: boolean;
+  /** With in: 'csv': false keeps every value a string. */
+  types?: boolean;
 }`;
 
 export const LINK_SNIPPET_TS = `${OPTIONS_TS}
@@ -116,6 +136,7 @@ async function toolKumarLink(
   options: ToolKumarOptions = {},
 ): Promise<string> {
   const { compare, schema, view, to, sep, arrays, depth, escape } = options;
+  const { in: format, delimiter, header, types } = options;
   const encode = async (value: unknown): Promise<string> => {
     const text = typeof value === 'string' ? value : JSON.stringify(value);
     const stream = new Blob([text]).stream()
@@ -140,6 +161,10 @@ async function toolKumarLink(
   if (arrays) hash += '&arrays=' + arrays;
   if (depth) hash += '&depth=' + depth;
   if (escape === false) hash += '&escape=0';
+  if (format) hash += '&in=' + format;
+  if (delimiter) hash += '&delimiter=' + delimiter;
+  if (header === false) hash += '&header=0';
+  if (types === false) hash += '&types=0';
   return 'https://tools.vikasmaur.com/#' + hash;
 }`;
 
@@ -152,6 +177,7 @@ function openInToolKumar(
   options: ToolKumarOptions = {},
 ): Promise<Window> {
   const { compare, schema, view, to, sep, arrays, depth, escape } = options;
+  const { in: format, delimiter, header, types } = options;
   const origin = 'https://tools.vikasmaur.com';
   const text = (value: unknown): string | undefined =>
     typeof value === 'string' || value === undefined
@@ -167,7 +193,10 @@ function openInToolKumar(
         const a = text(json);
         const b = text(schema === undefined ? compare : schema);
         const v = schema === undefined ? view : 'schema';
-        tab.postMessage({ toolkumar: 'open', a, b, view: v, to, sep, arrays, depth, escape }, origin);
+        tab.postMessage({
+          toolkumar: 'open', a, b, view: v, to, sep, arrays, depth, escape,
+          in: format, delimiter, header, types,
+        }, origin);
       } else if (data?.toolkumar === 'opened') done();
       else if (data?.toolkumar === 'error') fail(data.reason ?? 'error');
     };
