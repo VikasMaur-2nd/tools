@@ -42,3 +42,9 @@ export function locateSource(e: PlacesHost, format: ImportFormat, options: CsvOp
     w.postMessage({ seq, text, format, csv: options, locate: { pointers, keys } });
   });
 }
+
+/** An error's key among its input's places: its pointer, and whether it is about the property name there. */
+export const placeKey = (x: { pointer: string; key: boolean }) => (x.key ? 'k' : 'v') + x.pointer;
+
+/** Error `x`'s place among `places` (by placeKey; undefined: not known). Every lookup goes through this. */
+export const placeOf = <T>(places: Map<string, T> | null | undefined, x: { pointer: string; key: boolean }): T | undefined => places?.get(placeKey(x));
