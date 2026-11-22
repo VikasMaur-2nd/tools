@@ -29,17 +29,18 @@
  * aren't valid are ignored, never an error.
  */
 import { TARGETS, isFlat } from './engine/targets';
-import { SOURCE_FORMATS } from './engine/rules';
+import { MAX_DOCUMENT, SOURCE_FORMATS, linkIn } from './engine/rules';
 import type { FlatSettings, SourceFormat, View } from './engine/store';
 
 const VIEWS: readonly View[] = ['format', 'tree', 'table', 'graph', 'convert', 'compare', 'schema'];
 /**
- * The largest document a tab opens, however it arrives: a file, a link or a handoff.
+ * The largest document a tab opens, however it arrives: a file, a link or a handoff (it lives in
+ * lib/engine/rules.ts, which the first load has; this module loads when a link is opened or made).
  * Links themselves have no length limit of ours (browsers have theirs: about 2 MB of
  * address in Chrome, 1 MB in Firefox); this guard stops a tiny link that inflates
  * to gigabytes while it decompresses.
  */
-export const MAX_DOCUMENT = 300 * 1024 * 1024;
+export { MAX_DOCUMENT };
 /**
  * The largest document a share link opens without asking. A link compresses its document,
  * hundreds of times for repetitive JSON: a 130 KB link (it fits a README badge) can hold
@@ -113,7 +114,7 @@ const isUrl = (s: string) => /^https?:\/\//i.test(s);
 export function parseLink(hash: string): ParsedLink {
   const h = hash.startsWith('#') ? hash.slice(1) : hash;
   if (h === 'handoff') return 'handoff';
-  if (!/(?:^|&)[ab]=/.test(h)) return null;
+  if (!linkIn(h)) return null;
   const p = new URLSearchParams(h);
   const doc = (k: 'a' | 'b'): LinkSource | undefined | false => {
     const v = p.get(k);

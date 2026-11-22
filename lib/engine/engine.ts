@@ -20,13 +20,14 @@ import type { SourceReply, SourceRequest } from './source.worker';
 import { rt } from '../i18n/ui';
 import { idle, soon } from './idle';
 import { Doc, lf } from './doc';
-import { formatOf, formatOfName, holdsEscapedJson, holdsJson, jsonLines, persistenceAfterChange, persistenceAfterLoad, plainJson, unescapeText } from './rules';
+import { MAX_DOCUMENT, formatOf, formatOfName, holdsEscapedJson, holdsJson, jsonLines, linkIn, persistenceAfterChange, persistenceAfterLoad, plainJson, unescapeText } from './rules';
 import { PRIVATE, reportError, track } from '../analytics';
 import { noteLoad, watchPastes } from '../analytics/load';
 import { getDiffMenu, getEngine } from './instance';
 import type { InputSource } from '../analytics/events';
 import type { SnippetFormat } from '../badge';
-import { HANDOFF_VERSION, LINK_DOCUMENT, LinkTooLarge, MAX_DOCUMENT, PASTED_LINK, decodeDoc, linkReach, linkHash, parseLink, readHandoff, type HandoffReply, type LinkDoc, type LinkRequest } from '../link';
+// (Links' code, lib/link.ts, loads when a link is opened or made: not part of the first load.)
+import type { HandoffReply, LinkDoc, LinkRequest } from '../link';
 import type { HugeHook } from '../huge/session';
 import { TallScroll } from './tall';
 
@@ -2759,8 +2760,8 @@ export class Engine {
    */
   async share(as: SnippetFormat = 'link') {
     try {
-      // (The button's markup loads meanwhile: shared rarely, it isn't part of the first load.)
-      const [link, { snippet }] = await Promise.all([this.shareUrl(), import('../badge')]);
+      // (The button's markup loads meanwhile: shared rarely, it isn't part of the first load. So is links' code.)
+      const [link, { snippet }, { linkReach }] = await Promise.all([this.shareUrl(), import('../badge'), import('../link')]);
       if (!link) return this.toast('Nothing to share yet', 'info');
       const { url, comparing } = link;
       track('feature_used', { feature: comparing ? 'share_compare' : 'share_link', value: as });
@@ -2809,6 +2810,7 @@ export class Engine {
     const compact = (text: string, r: ParseResult | null) => (r?.root && !r.error && !r.issues.length ? formatDoc(text, r, '') : text);
     // (Another format travels as typed, and says what it is.)
     const source = this.inFmt !== 'json';
+    const { linkHash } = await import('../link');
     const hash = await linkHash({
       a: a.trim() ? { text: this.jwt ? a.trim() : source ? a : compact(a, r) } : undefined,
       b: rb ? { text: compact(b, rb) } : undefined,
@@ -2824,12 +2826,18 @@ export class Engine {
 
   /** Opens what a link's fragment asks for (lib/link.ts), then takes it out of the address bar. */
   private openLink = async () => {
-    const link = parseLink(location.hash);
-    if (!link) return;
+    const hash = location.hash;
+    if (!linkIn(hash)) return;
+    // Links' code loads now. (If it can't, the link stays in the address bar, for a reload; a newer one is the
+    // newer call's.)
+    const L = await import('../link').catch(() => null);
+    if (!L || this.dead || location.hash !== hash) return;
+    const { decodeDoc, LinkTooLarge, LINK_DOCUMENT } = L;
+    const link = L.parseLink(hash)!;
     // Exactly as long as Chrome's and Edge's address bar keeps of a paste: the rest of it was dropped (lib/link.ts).
-    const cut = location.href.length === PASTED_LINK;
+    const cut = location.href.length === L.PASTED_LINK;
     history.replaceState(null, '', location.pathname + location.search);
-    if (link === 'handoff') return this.awaitHandoff();
+    if (link === 'handoff') return this.awaitHandoff(L);
     const broken = () =>
       cut
         ? this.toast('That link was cut short: Chrome and Edge keep only the first 500 KB of a link pasted into the address bar. Open it by clicking it instead.', 'err', undefined, 9000)
@@ -2863,7 +2871,7 @@ export class Engine {
    * `/#handoff`: the page that opened this tab sends documents too big for a link
    * by postMessage (lib/link.ts, app/(en)/integrate/snippets.ts). Only that page is heard, once.
    */
-  private awaitHandoff() {
+  private awaitHandoff({ readHandoff, HANDOFF_VERSION }: typeof import('../link')) {
     const opener = window.opener as Window | null;
     if (!opener) return;
     const reply = (m: HandoffReply, origin = '*') => {
