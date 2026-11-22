@@ -43,7 +43,8 @@ const isWs = (c: number) => c === 32 || c === 9;
  * item or key (null: not reading for it, as importToJson does). For CSV, each record's fields' offsets.
  */
 let where: WeakMap<object, Map<string | number, number>> | null = null;
-let csvAt: { rows: number[][]; keys: string[] | null } | null = null;
+/** While locating (locateImport): each record's field starts, the header's, the keys; no JSON is written then. */
+let csvAt: { rows: number[][]; head: number[] | null; keys: string[] | null } | null = null;
 /** Notes that container `c`'s key or index `k` is written at `p` (the first place said wins). */
 const pin = (c: object, k: string | number, p: number) => {
   if (!where) return;
@@ -281,7 +282,11 @@ function csv(src: string, delim: string | null, indent: string, header = true, t
     }
     if (row.length > 1 || row[0] !== '' || q[0]) {
       if (csvAt && (!header || keys)) csvAt.rows.push(starts);
-      if (!header) {
+      else if (csvAt) csvAt.head = starts;
+      if (csvAt && (keys || !header)) {
+        // (Locating: only the keys a longer record adds, never its JSON.)
+        if (keys) while (keys.length < row.length) addKey('');
+      } else if (!header) {
         // (Its first row says whether the file quotes every field, as the first data row does with a header.)
         if (quoteAll < 0) quoteAll = q.every(Boolean) ? 1 : 0;
         out += (count++ ? ',' : '') + p1 + '[';
@@ -1539,35 +1544,53 @@ export type Place = { p: number; exact: boolean };
 
 const INDEX = /^(0|[1-9]\d*)$/;
 
+/** Where a JSON Pointer's value (`key`: its property name) is in a text (see locateImport). */
+type Locator = (ptr: string, key: boolean) => Place;
+
+/** The last text read for places, how, and its locator (null: it doesn't convert): read again only when they change. */
+let located: { text: string; how: string; at: Locator | null } | null = null;
+
 /**
  * Where the values at JSON Pointers `pointers` of what `text` converts to (importToJson, the same format and
  * options) are in `text`: each one's key or item, or the nearest one written there (`exact` false), such as a
- * missing CSV cell's record, or a value of a YAML merge key's mapping. null when `text` doesn't convert.
+ * missing CSV cell's record, or a value of a YAML merge key's mapping. With `keys[i]`, pointer i's property name
+ * (a CSV column's header cell). null when `text` doesn't convert. The places of the last text are kept: asked again
+ * for the same text and options, it isn't read again.
  */
-export function locateImport(text: string, format: ImportFormat, options: CsvOptions, pointers: string[]): Place[] | null {
+export function locateImport(text: string, format: ImportFormat, options: CsvOptions, pointers: string[], keys: boolean[] = []): Place[] | null {
+  const how = `${format}|${options.delimiter ?? ''}|${options.header !== false}|${options.types !== false}`;
+  if (located?.text !== text || located.how !== how) located = { text, how, at: locator(text, format, options) };
+  const at = located.at;
+  return at && pointers.map((ptr, i) => at(ptr, !!keys[i]));
+}
+
+function locator(text: string, format: ImportFormat, options: CsvOptions): Locator | null {
   const bom = text.charCodeAt(0) === 0xfeff ? 1 : 0;
   let src = bom ? text.slice(1) : text;
   const tokens = (ptr: string) => (ptr ? ptr.slice(1).split('/').map((t) => t.replace(/~1/g, '/').replace(/~0/g, '~')) : []);
   const start = Math.max(0, src.search(/\S/)) + bom;
   try {
     if (format === 'csv' || format === 'tsv') {
-      const at: { rows: number[][]; keys: string[] | null } = (csvAt = { rows: [], keys: null });
+      const at: { rows: number[][]; head: number[] | null; keys: string[] | null } = (csvAt = { rows: [], head: null, keys: null });
       csv(src, options.delimiter || (format === 'tsv' ? '\t' : null), '', options.header !== false, options.types !== false);
-      return pointers.map((ptr) => {
+      return (ptr, key) => {
         const [r, c, ...more] = tokens(ptr);
         if (r === undefined) return { p: start, exact: true };
         const fields = INDEX.test(r) ? at.rows[Number(r)] : undefined;
         if (!fields) return { p: start, exact: false };
         const k = c === undefined ? 0 : at.keys ? at.keys.indexOf(c) : INDEX.test(c) ? Number(c) : -1;
+        // (A property name is its column's header cell; a column the header doesn't name: the header row.)
+        if (key && at.head && c !== undefined && !more.length) return k >= 0 && k < at.head.length ? { p: at.head[k] + bom, exact: true } : { p: at.head[0] + bom, exact: false };
         // (A record shorter than the header has no cells for the rest: its record then.)
         if (k < 0 || k >= fields.length) return { p: fields[0] + bom, exact: false };
         return { p: fields[k] + bom, exact: !more.length };
-      });
+      };
     }
     src = src.replace(/\r\n?/g, '\n');
     const pins = (where = new WeakMap());
     const root = format === 'yaml' ? yaml(src, '') : format === 'xml' ? xml(src) : toml(src);
-    return pointers.map((ptr) => {
+    // (A value's place is its key's or item's, so a property name's is the same.)
+    return (ptr) => {
       let v: V | undefined = root;
       let p = start;
       for (const t of tokens(ptr)) {
@@ -1578,7 +1601,7 @@ export function locateImport(text: string, format: ImportFormat, options: CsvOpt
         p = q + bom;
       }
       return { p, exact: true };
-    });
+    };
   } catch {
     return null;
   } finally {

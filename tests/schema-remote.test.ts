@@ -13,11 +13,11 @@ import { EN } from '../lib/i18n/ui';
 type Reply = Response | Error | ((init?: RequestInit) => Promise<Response>);
 /** A page's fetch answering from `site` (URL → reply), noting what was asked. */
 function env(site: Record<string, Reply>, more: Partial<FetchEnv> = {}) {
-  const asked: { url: string; mode?: string; credentials?: string }[] = [];
+  const asked: { url: string; mode?: string; credentials?: string; cache?: string }[] = [];
   const e: FetchEnv = {
     fetch: (async (u: string | URL, init?: RequestInit) => {
       const url = String(u);
-      asked.push({ url, mode: init?.mode, credentials: init?.credentials });
+      asked.push({ url, mode: init?.mode, credentials: init?.credentials, cache: init?.cache });
       const r = site[url];
       if (r === undefined) throw new TypeError('Failed to fetch');
       if (r instanceof Error) throw r;
@@ -41,6 +41,15 @@ test('each document once (fragments stripped), in the order asked, without cooki
     { url: 'https://b.test/t.json', text: '{"minimum":0}' },
   ]);
   assert.deepEqual(asked.map((a) => [a.url, a.credentials]), [['https://a.test/s.json', 'omit'], ['https://b.test/t.json', 'omit']]);
+});
+
+test('schemas are fetched past the service worker\'s cache (no-store), the CORS probe too (review 2, finding 2)', async () => {
+  const { env: e, asked } = env({
+    'https://a.test/s.json': json({}),
+    'https://cors.test/s': (init) => (init?.mode === 'no-cors' ? Promise.resolve(new Response(null, { status: 200 })) : Promise.reject(new TypeError('Failed to fetch'))),
+  });
+  await run(['https://a.test/s.json', 'https://cors.test/s'], e);
+  assert.deepEqual(asked.map((a) => [a.url, a.mode, a.cache]), [['https://a.test/s.json', undefined, 'no-store'], ['https://cors.test/s', undefined, 'no-store'], ['https://cors.test/s', 'no-cors', 'no-store']]);
 });
 
 test('why each failed: a status, CORS, unreachable, offline, http on an https page, not JSON, too big, cut short', async () => {
@@ -143,4 +152,79 @@ test('the worker gets the fetched schemas once, then only when one more comes', 
   client.validate({ doc: '2', schema: '{}', draft: null, formats: false, resources: r2 }, () => undefined);
   assert.deepEqual(sent.map((m) => m.resources && Object.keys(m.resources)), [[], ['https://a.test/s.json'], null, ['https://a.test/s.json', 'https://b.test/t.json']]);
   client.destroy();
+});
+
+test('one $id claimed by two schemas names neither: a fetched schema never stands in for a local one (review 2, finding 1)', () => {
+  const v = (schema: object, doc: unknown, resources: Record<string, string>) => validateTexts({ schema: JSON.stringify(schema), doc: JSON.stringify(doc), draft: null, formats: false, resources });
+  const say = (r: ValidateResult) => ({ valid: r.valid, complete: r.complete, total: r.total, problems: r.problems.map((p) => `${p.code}${p.params.why ? ':' + p.params.why : ''}${p.warn ? ' (warn)' : ''}${p.doc ? ' in ' + p.doc : ''}`) });
+  const rule = { type: 'integer' };
+  const main = { $id: 'https://a.test/main.json', allOf: [{ $ref: '#/$defs/rule' }, { $ref: 'https://a.test/other.json' }], $defs: { rule } };
+  // other.json claims main.json's $id and puts `true` where its rule is: the local rule is never replaced, whatever
+  // order the refs come in; the clash is an error and the refs to that URI aren't applied (not fully checked).
+  const other = { 'https://a.test/other.json': JSON.stringify({ $id: 'https://a.test/main.json', $defs: { rule: true } }) };
+  for (const schema of [main, { ...main, allOf: [...main.allOf].reverse() }]) {
+    assert.deepEqual(say(v(schema, 'x', other)), { valid: false, complete: false, total: 0, problems: ['unresolved:duplicate', 'duplicateId in https://a.test/other.json'] });
+  }
+  const dup = v(main, 'x', other).problems.find((p) => p.params.why === 'duplicate')!;
+  assert.equal(problemText('unresolved', dup.params, EN), "Can't resolve $ref #/$defs/rule: two schemas have the $id https://a.test/main.json");
+  assert.equal(problemText('duplicateId', v(main, 'x', other).problems[1].params, EN), "Two schemas have the $id https://a.test/main.json: a $ref to it can't be resolved");
+  // A fetched schema nothing refers to (one fetched for an earlier version of the schema) claims nothing.
+  assert.deepEqual(say(v({ ...main, allOf: [{ $ref: '#/$defs/rule' }] }, 'x', other)), { valid: false, complete: true, total: 1, problems: [] });
+  // Two of the schema's own resources with one $id: the same.
+  const own = { $ref: 'https://a.test/x', $defs: { a: { $id: 'https://a.test/x', type: 'string' }, b: { $id: 'https://a.test/x', type: 'number' } } };
+  assert.deepEqual(say(v(own, true, {})), { valid: false, complete: false, total: 0, problems: ['unresolved:duplicate', 'duplicateId'] });
+});
+
+test('a fetched schema is known by its $id whichever ref comes first (review 2, finding 1)', () => {
+  const v = (schema: object, doc: unknown, resources: Record<string, string>) => validateTexts({ schema: JSON.stringify(schema), doc: JSON.stringify(doc), draft: null, formats: false, resources });
+  const res = { 'https://a.test/r.json': JSON.stringify({ $id: 'https://a.test/canonical.json', $defs: { n: { type: 'number' } } }) };
+  const refs = ['https://a.test/canonical.json#/$defs/n', 'https://a.test/r.json'];
+  for (const list of [refs, [...refs].reverse()]) {
+    const r = v({ allOf: list.map(($ref) => ({ $ref })) }, 'x', res);
+    assert.deepEqual([r.valid, r.complete, r.errors.map((e) => e.code), r.remote, r.problems], [false, true, ['type'], undefined, []], list[0]);
+  }
+  // Referred to only by its $id, from the schema, but reached through another fetched schema: the same.
+  const via = { ...res, 'https://a.test/hub.json': JSON.stringify({ $ref: 'https://a.test/r.json' }) };
+  const r = v({ allOf: [{ $ref: 'https://a.test/canonical.json#/$defs/n' }, { $ref: 'https://a.test/hub.json' }] }, 'x', via);
+  assert.deepEqual([r.complete, r.errors.map((e) => e.code)], [true, ['type']]);
+});
+
+test('a reply that is JSON but not one schema is a failure, offered again (review 2, finding 8)', async () => {
+  const body = (text: string) => new Response(text, { status: 200 });
+  const { env: e } = env({
+    'https://a.test/lines': body('{"type": "string"}\n{"type": "number"}\n'),
+    'https://a.test/array': body('[{"type": "string"}]'),
+    'https://a.test/number': body('5'),
+    'https://a.test/true': body('true'),
+    'https://a.test/loose': body('{"type": "string", // a comment\n}'),
+  });
+  const got = await run(['https://a.test/lines', 'https://a.test/array', 'https://a.test/number', 'https://a.test/true', 'https://a.test/loose'], e);
+  assert.deepEqual(got!.map((r) => ('failure' in r ? r.failure.kind : 'ok')), ['notSchema', 'notSchema', 'notSchema', 'ok', 'ok']);
+});
+
+test('relative refs are relative to where a schema came from: a link\'s schema by URL, a fetched one after redirects (review 2, finding 5)', async () => {
+  const v = (schema: object, doc: unknown, more: Partial<Parameters<typeof validateTexts>[0]>) => validateTexts({ schema: JSON.stringify(schema), doc: JSON.stringify(doc), draft: null, formats: false, ...more });
+  // The schema itself, opened from https://example.com/schemas/main.json, with no $id.
+  const base = 'https://example.com/schemas/main.json';
+  assert.deepEqual(v({ $ref: 'types.json' }, 1, { base }).remote, ['https://example.com/schemas/types.json']);
+  assert.deepEqual(v({ $ref: 'main.json#/$defs/n', $defs: { n: { type: 'number' } } }, 'x', { base }).errors.map((e) => e.code), ['type']);
+  // Its own $id is still its base.
+  assert.deepEqual(v({ $id: 'https://other.example/x/s.json', $ref: 'types.json' }, 1, { base }).remote, ['https://other.example/x/types.json']);
+  // A fetched schema that was redirected: relative to where it came from; the URL asked for, and that one, name it.
+  const { env: e } = env({
+    'https://a.test/s.json': () => {
+      const res = new Response('{"$ref": "types.json"}');
+      Object.defineProperty(res, 'url', { value: 'https://cdn.test/v2/s.json' });
+      Object.defineProperty(res, 'redirected', { value: true });
+      return Promise.resolve(res);
+    },
+    'https://a.test/plain.json': json({}),
+  });
+  assert.deepEqual(await run(['https://a.test/s.json', 'https://a.test/plain.json'], e), [
+    { url: 'https://a.test/s.json', text: '{"$ref": "types.json"}', base: 'https://cdn.test/v2/s.json' },
+    { url: 'https://a.test/plain.json', text: '{}' },
+  ]);
+  const resources = { 'https://a.test/s.json': { text: '{"$ref": "types.json"}', url: 'https://cdn.test/v2/s.json' } };
+  const r = v({ allOf: [{ $ref: 'https://a.test/s.json' }, { $ref: 'https://cdn.test/v2/s.json' }] }, 1, { resources });
+  assert.deepEqual([r.remote, r.problems.map((p) => p.code)], [['https://cdn.test/v2/types.json'], ['unresolved']]);
 });

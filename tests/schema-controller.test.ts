@@ -457,7 +457,7 @@ test('remote $refs: nothing is fetched until asked; then once, and validated aga
   await tick();
   assert.deepEqual(asked[3].req.resources, { 'https://a.test/s.json': '{"type": "object"}' });
   assert.equal(asked[3].req.resources, asked[2].req.resources, 'the same object: the worker isn\'t sent it again');
-  ctl.fetchRemote(['https://a.test/s.json', 'https://b.test/t.json']);
+  ctl.fetchRemote(['https://a.test/s.json', 'https://b.test/t.json'], true);
   assert.deepEqual(fetches[1].urls, ['https://b.test/t.json']);
   fetches[1].answer([{ url: 'https://b.test/t.json', text: '{}' }]);
   await tick();
@@ -513,4 +513,69 @@ test('remote $refs: at most 20 a click, the rest on the next; dismissing hides o
   ctl.dismissRemote(['https://x.test/a']);
   assert.equal(ctl.state.remote.dismissed, 'https://x.test/a');
   ctl.detach();
+});
+
+test('remote $refs: twenty that fail never hold back the rest; failures are tried again only when asked (review 2, finding 3)', async () => {
+  const { ctl, ed, asked, doc, fetches } = setup();
+  ctl.attach(ed, null);
+  ed.type('{}');
+  ctl.setDoc('{}', doc.id);
+  ctl.setOpen(true);
+  await tick();
+  const urls = Array.from({ length: 21 }, (_, i) => `https://a.test/${i}.json`);
+  asked[0].done(withRemote(urls));
+  // The first twenty all 404.
+  ctl.fetchRemote(urls);
+  assert.deepEqual(fetches[0].urls, urls.slice(0, 20));
+  fetches[0].answer(fetches[0].urls.map((url) => ({ url, failure: { kind: 'status' as const, status: 404, statusText: 'Not Found' } })));
+  await tick();
+  assert.equal(Object.keys(ctl.state.remote.failed).length, 20);
+  // Asked again: the 21st, never tried, not the twenty that failed.
+  ctl.fetchRemote(urls);
+  assert.deepEqual(fetches[1].urls, [urls[20]]);
+  fetches[1].answer([{ url: urls[20], text: '{}' }]);
+  await tick();
+  // Nothing new left: the plain fetch asks for nothing; trying the failed ones again asks for them, twenty at a time.
+  const n = fetches.length;
+  ctl.fetchRemote(urls);
+  assert.equal(fetches.length, n);
+  ctl.fetchRemote(urls, true);
+  assert.deepEqual(fetches[n].urls, urls.slice(0, 20));
+  ctl.detach();
+});
+
+test('a link\'s schema by URL is validated with that URL as its base: through edits, saved with it, back with Undo (review 2, finding 5)', async () => {
+  const { ctl, ed, asked, doc, storage } = setup();
+  ctl.attach(ed, null);
+  ctl.setDoc('{}', doc.id);
+  ctl.setOpen(true);
+  ctl.take({ seq: 7, text: '{"$ref": "types.json"}', name: 'main.json', url: 'https://example.com/schemas/main.json' });
+  await tick(200);
+  assert.equal(asked.at(-1)!.req.base, 'https://example.com/schemas/main.json');
+  ed.type('{"$ref": "types.json", "type": "object"}');
+  await tick(200);
+  assert.equal(asked.at(-1)!.req.base, 'https://example.com/schemas/main.json', 'kept through an edit');
+  ctl.persistNow();
+  assert.equal(JSON.parse(storage.get('jf:schema-doc')!).url, 'https://example.com/schemas/main.json');
+  // Another schema loaded (a file): none. Undo back past that load: the URL again.
+  ctl.load('{"$ref": "types.json"}', 'other.json');
+  await tick(200);
+  assert.equal(asked.at(-1)!.req.base, undefined);
+  ctl.renamed('main.json');
+  await tick(200);
+  assert.equal(asked.at(-1)!.req.base, 'https://example.com/schemas/main.json');
+  // A file of the same name loaded later forgets it.
+  ctl.load('{}', 'main.json');
+  ctl.renamed('main.json');
+  await tick(200);
+  assert.equal(asked.at(-1)!.req.base, undefined);
+  ctl.detach();
+  // Saved with it: a new page's controller reads it back.
+  const next = setup({ 'jf:schema-doc': JSON.stringify({ text: '{"$ref": "types.json"}', file: 'main.json', url: 'https://example.com/schemas/main.json' }) });
+  next.ctl.attach(next.ed, null);
+  next.ctl.setDoc('{}', next.doc.id);
+  next.ctl.setOpen(true);
+  await tick(200);
+  assert.equal(next.asked.at(-1)!.req.base, 'https://example.com/schemas/main.json');
+  next.ctl.detach();
 });

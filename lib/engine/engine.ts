@@ -17,6 +17,7 @@ import { convertFileName, convertMime, isFlat, targetInfo } from './targets';
 import { DEFAULT_SETTINGS, paired, store, type ContextMenu, type CsvDelimiter, type DiffMenu, type Hint, type IndentId, type MenuArea, type Settings, type Sizes, type SourceFormat, type Status, type EnginePreset, type Theme, type View } from './store';
 import type { JwtInput, readJwt } from '../json/jwt';
 import type { SourceReply, SourceRequest } from './source.worker';
+import type { Place } from '../convert/import';
 import { rt } from '../i18n/ui';
 import { idle, soon } from './idle';
 import { Doc, lf } from './doc';
@@ -377,6 +378,8 @@ export class Engine {
   private srcSeq = 0;
   /** The conversion the worker is making: of that editor version, read that way (`key`, see sourceOptions). */
   private srcWanted: { seq: number; ver: object; key: string } | null = null;
+  /** Gets the worker's places replies (lib/schema/places.ts asks), and null when it fails or is stopped: they won't come then. */
+  placesIn?: ((d: { seq: number; places: Place[] | null } | null) => void) | null;
   /** The last conversion the worker made, and that its JSON was parsed (analyze uses it for that version and reading). */
   private srcDone: { ver: object; key: string; conv: { json: string } | { error: string; p: number } } | null = null;
   private sel: JNode | null = null;
@@ -866,16 +869,17 @@ export class Engine {
   }
 
   /** The worker for big inputs in another format (null when it can't start: they convert here). */
-  private sourceWorker(): Worker | null {
+  sourceWorker(): Worker | null {
     if (this.dead) return null;
     if (this.srcWorker !== undefined) return this.srcWorker;
     try {
       const w = new Worker(new URL('./source.worker.ts', import.meta.url));
-      w.onmessage = (e: MessageEvent<SourceReply>) => this.sourceConverted(e.data);
+      w.onmessage = (e: MessageEvent<SourceReply>) => ('places' in e.data ? this.placesIn?.(e.data) : this.sourceConverted(e.data));
       w.onerror = (e) => {
         // (It couldn't load, offline before it was ever cached say: converted here from now on.)
         e.preventDefault();
         w.terminate();
+        this.placesIn?.(null);
         this.srcWorker = null;
         this.srcBusy = false;
         if (this.srcWanted && !this.dead) {
@@ -907,6 +911,7 @@ export class Engine {
     // A conversion of an older text or reading still under way is stopped, not waited out (seconds at a few MB).
     if (this.srcBusy) {
       w.terminate();
+      this.placesIn?.(null);
       this.srcWorker = undefined;
       this.srcBusy = false;
       w = this.sourceWorker();
@@ -925,7 +930,7 @@ export class Engine {
   }
 
   /** The worker's conversion: its JSON is parsed here in short steps, then analysed (dropped if the input changed meanwhile). */
-  private sourceConverted(d: SourceReply) {
+  private sourceConverted(d: Exclude<SourceReply, { places: unknown }>) {
     this.srcBusy = false;
     const want = this.srcWanted;
     if (this.dead || !want || d.seq !== want.seq) return;
@@ -2911,7 +2916,7 @@ export class Engine {
    * `signal`: its request (see requests).
    */
   private async openRequest(r: LinkRequest, signal: AbortSignal, from?: string) {
-    const got = await Promise.all([r.a, r.b].map((d) => (!d ? undefined : 'url' in d ? this.fetchText(d.url, signal) : { text: d.text, name: null, host: '' })));
+    const got = await Promise.all([r.a, r.b].map((d) => (!d ? undefined : 'url' in d ? this.fetchText(d.url, signal) : { text: d.text, name: null, host: '', url: '' })));
     if (signal.aborted || this.dead || got.includes(null)) return; // (fetchText said why)
     const [a, b] = got;
     const source = (d: LinkDoc): InputSource => (from !== undefined ? 'handoff' : 'url' in d ? 'link_url' : 'link');
@@ -2930,7 +2935,8 @@ export class Engine {
     }
     const view = r.view ?? (b ? 'compare' : undefined);
     // (With the Schema view, b is the schema: its editor takes it, with its options.)
-    if (b && view === 'schema') store.set({ schemaIn: { seq: Date.now(), text: open(b.text) ?? b.text, name: b.name, draft: r.draft, formats: !!r.formats } });
+    // (One fetched by URL keeps where it came from: its relative refs are relative to it.)
+    if (b && view === 'schema') store.set({ schemaIn: { seq: Date.now(), text: open(b.text) ?? b.text, name: b.name, ...(b.url && { url: b.url }), draft: r.draft, formats: !!r.formats } });
     else if (b) {
       noteLoad(source(r.b!), 2, b.name);
       this.loadCompare(open(b.text) ?? b.text, b.name);
@@ -2953,8 +2959,11 @@ export class Engine {
     this.toast(a && had ? `${msg} · ${this.mod}Z restores your previous document` : msg, 'ok');
   }
 
-  /** Fetches a document from a URL; null, after saying why, when that fails (quietly, once `signal` aborts it). */
-  private async fetchText(raw: string, signal: AbortSignal): Promise<{ text: string; name: string; host: string } | null> {
+  /**
+   * Fetches a document from a URL; null, after saying why, when that fails (quietly, once `signal` aborts it). `url`:
+   * where it came from, after redirects.
+   */
+  private async fetchText(raw: string, signal: AbortSignal): Promise<{ text: string; name: string; host: string; url: string } | null> {
     let url: URL;
     try {
       url = new URL(raw.trim());
@@ -2966,7 +2975,8 @@ export class Engine {
     this.toast('Fetching…', 'info');
     let res: Response | null = null;
     try {
-      res = await fetch(url, { headers: { Accept: 'application/json, text/plain, */*' }, signal });
+      // (no-store: the service worker passes it by, so what was fetched for the visitor is never kept there.)
+      res = await fetch(url, { headers: { Accept: 'application/json, text/plain, */*' }, cache: 'no-store', signal });
       if (signal.aborted) return null;
       if (!res.ok) {
         this.toast(`Request failed: ${res.status} ${res.statusText}`, 'err');
@@ -2974,7 +2984,7 @@ export class Engine {
       }
       const text = await (await import('../json/read')).readText(res);
       const name = url.pathname.split('/').pop() || url.hostname;
-      return { text, name: /\.json$/i.test(name) || formatOfName(name) !== 'json' ? name : name + '.json', host: url.hostname };
+      return { text, name: /\.json$/i.test(name) || formatOfName(name) !== 'json' ? name : name + '.json', host: url.hostname, url: res.url || url.href };
     } catch {
       if (signal.aborted) return null;
       const why = res ? 'The connection dropped before the whole file arrived. Try again.' : await this.fetchFailure(url, signal);
@@ -2997,7 +3007,7 @@ export class Engine {
     const stop = () => probe.abort();
     signal.addEventListener('abort', stop);
     try {
-      await fetch(url, { mode: 'no-cors', signal: probe.signal });
+      await fetch(url, { mode: 'no-cors', cache: 'no-store', signal: probe.signal });
       return "Couldn't fetch. The server must allow cross-origin requests (CORS).";
     } catch {
       return signal.aborted ? null : "Couldn't reach the server. Check the address or try again later.";
@@ -4651,11 +4661,12 @@ export class Engine {
           const next = () => {
             const load = mods.shift();
             if (load) return void load().then(() => idle(next), () => idle(next));
-            // Hand the SW every asset this page loaded so the app works offline.
-            const urls = performance
-              .getEntriesByType('resource')
-              .map((e) => e.name)
-              .filter((u) => u.startsWith(location.origin) && !u.includes('/_vercel/'));
+            // Hand the SW the files this page loaded so the app works offline: never what it fetched (a document or
+            // schema by URL, which the SW would fetch again with cookies and keep). The app's own fetched files, a
+            // page's dictionaries, are named in its HTML: the SW gets them with it.
+            const urls = (performance.getEntriesByType('resource') as PerformanceResourceTiming[])
+              .filter((e) => e.name.startsWith(location.origin + '/') && !e.name.includes('/_vercel/') && !/^(fetch|xmlhttprequest|beacon)$/.test(e.initiatorType))
+              .map((e) => e.name);
             const home = /^\/[a-z]{2}(?=\/|$)/.exec(location.pathname)?.[0] || '/';
             reg.active?.postMessage({ type: 'cache', urls: [...new Set([location.origin + '/', location.origin + home, location.origin + location.pathname, ...urls])] });
           };

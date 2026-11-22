@@ -1,10 +1,11 @@
 /**
  * Schemas a schema refers to by URL (a remote `$ref`), fetched only when the visitor asks (the Schema view's Fetch
- * referenced schemas: lib/schema/controller.ts fetchRemote). Each URL is fetched once, without its fragment and
- * without cookies, read up to a size limit and checked to be JSON. Why one failed says what the visitor can do,
+ * referenced schemas: lib/schema/controller.ts fetchRemote). Each URL is fetched once, without its fragment, without
+ * cookies and past the service worker's cache (public/sw.js leaves no-store requests alone), read up to a size limit
+ * and checked to be one schema. Why one failed says what the visitor can do,
  * in the words the app uses when it fetches a document (lib/engine/engine.ts fetchText, fetchFailure).
  */
-import { parse } from '../json/parser';
+import { BOOL, OBJ, parse } from '../json/parser';
 
 /** The largest schema fetched (bytes). */
 export const REMOTE_MAX_BYTES = 5 * 1024 * 1024;
@@ -16,9 +17,10 @@ export const REMOTE_TIMEOUT = 20_000;
 /** Why a URL wasn't fetched. */
 export type FetchFailure =
   | { kind: 'status'; status: number; statusText: string }
-  | { kind: 'cors' | 'mixed' | 'offline' | 'unreachable' | 'dropped' | 'timeout' | 'tooBig' | 'notJson' | 'notHttp' };
+  | { kind: 'cors' | 'mixed' | 'offline' | 'unreachable' | 'dropped' | 'timeout' | 'tooBig' | 'notJson' | 'notSchema' | 'notHttp' };
 
-export type Fetched = { url: string; text: string } | { url: string; failure: FetchFailure };
+/** `base`: where it came from after redirects, when not `url` (the base of its relative refs). */
+export type Fetched = { url: string; text: string; base?: string } | { url: string; failure: FetchFailure };
 
 /** What fetching needs of the page (tests pass their own). */
 export interface FetchEnv {
@@ -87,12 +89,15 @@ async function one(url: string, signal: AbortSignal, env: FetchEnv): Promise<Fet
   }, REMOTE_TIMEOUT);
   let res: Response | null = null;
   try {
-    res = await env.fetch(url, { headers: { Accept: 'application/schema+json, application/json, */*' }, credentials: 'omit', signal: stop.signal });
+    // (no-store: the service worker passes it by, so it is never kept outside this tab, nor asked for again with cookies.)
+    res = await env.fetch(url, { headers: { Accept: 'application/schema+json, application/json, */*' }, credentials: 'omit', cache: 'no-store', signal: stop.signal });
     if (!res.ok) return { url, failure: { kind: 'status', status: res.status, statusText: res.statusText } };
     const text = await body(res);
     const r = parse(text);
     if (!r.root || r.error) return { url, failure: { kind: 'notJson' } };
-    return { url, text };
+    // (A schema is one object or boolean: JSON Lines, an array, a number aren't one.)
+    if (r.multi || (r.root.t !== OBJ && r.root.t !== BOOL)) return { url, failure: { kind: 'notSchema' } };
+    return { url, text, ...(res.redirected && res.url && res.url !== url && { base: res.url }) };
   } catch (e) {
     if (signal.aborted) return null;
     if (late) return { url, failure: { kind: 'timeout' } };
@@ -102,7 +107,7 @@ async function one(url: string, signal: AbortSignal, env: FetchEnv): Promise<Fet
     // The browser says the same for a server that doesn't allow cross-origin reads and one it can't reach: a reply
     // the page may not read arrives only from a server that is there.
     try {
-      await env.fetch(url, { mode: 'no-cors', credentials: 'omit', signal: stop.signal });
+      await env.fetch(url, { mode: 'no-cors', credentials: 'omit', cache: 'no-store', signal: stop.signal });
       return { url, failure: { kind: 'cors' } };
     } catch {
       return signal.aborted ? null : { url, failure: { kind: late ? 'timeout' : 'unreachable' } };

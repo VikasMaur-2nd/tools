@@ -23,13 +23,13 @@ const js = ts.transpileModule(source, {
   }) as ts.SourceFile] },
 }).outputText;
 
-function engine(view: string) {
+function engine(view: string, fetch?: (url: unknown, init?: RequestInit) => Promise<Response>) {
   const state: Dynamic = { settings: { view, target: 'typescript', indent: '2' }, schemaIn: null };
   const calls: unknown[][] = [];
   const out: Dynamic = {};
   runInNewContext(js, {
     exports: out, performance, URL, Blob, Error, Promise, queueMicrotask, setTimeout: () => 0, clearTimeout: () => undefined, location: { origin: 'https://tools.example' },
-    CompressionStream, DecompressionStream, Response, TextDecoder, btoa, atob, Uint8Array, String,
+    CompressionStream, DecompressionStream, Response, TextDecoder, btoa, atob, Uint8Array, String, fetch,
     require: (name: string) => {
       if (name === './store') return { paired, store: { get: () => state, set: (patch: Dynamic) => Object.assign(state, patch) } };
       if (name === '../analytics') return { track: () => undefined, reportError: () => undefined };
@@ -93,4 +93,21 @@ test('opening a link: with view=schema, b goes to the schema editor; without, to
   const old = engine('format');
   await old.e.openRequest({ a: { text: '1' }, b: { text: '2' } }, signal);
   assert.deepEqual([old.state.schemaIn, old.calls.find((c) => c[0] === 'loadCompare'), old.calls.find((c) => c[0] === 'setView')], [null, ['loadCompare', '2'], ['setView', 'compare']]);
+});
+
+test('a link\'s schema by URL keeps where it came from, after redirects: the base of its relative refs (review 2, finding 5)', async () => {
+  const asked: string[] = [];
+  const s = engine('format', async (url) => {
+    asked.push(String(url));
+    const res = new Response('{"$ref": "types.json"}');
+    Object.defineProperty(res, 'url', { value: 'https://cdn.example/v2/main.json' });
+    return res;
+  });
+  await s.e.openRequest({ b: { url: 'https://example.com/schemas/main.json' }, view: 'schema' }, new AbortController().signal);
+  assert.deepEqual(asked, ['https://example.com/schemas/main.json']);
+  assert.deepEqual([s.state.schemaIn.name, s.state.schemaIn.url], ['main.json', 'https://cdn.example/v2/main.json']);
+  // One written in the link has none.
+  const inline = engine('format');
+  await inline.e.openRequest({ b: { text: '{}' }, view: 'schema' }, new AbortController().signal);
+  assert.equal('url' in inline.state.schemaIn, false);
 });

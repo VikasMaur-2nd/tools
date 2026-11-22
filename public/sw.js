@@ -6,7 +6,8 @@
  *  /_next/static/*      cache-first (content-hashed, immutable); a worker's script
  *                       is answered with a new Response so it keeps its #params=
  *  other same-origin    stale-while-revalidate
- *  never touched        cross-origin, non-GET, /_vercel/* and /relay/* (analytics), RSC requests
+ *  never touched        cross-origin, non-GET, /_vercel/* and /relay/* (analytics), RSC requests,
+ *                       no-store requests (what the page fetches for the visitor: a document or schema by URL)
  *
  * What a page needs offline, its files: what its HTML names (scripts, styles,
  * fonts, icons), every chunk those scripts can load later ("static/chunks/…"
@@ -282,12 +283,13 @@ self.addEventListener('activate', (event) => {
 self.addEventListener('message', (event) => {
   const data = event.data;
   if (!data || data.type !== 'cache' || !Array.isArray(data.urls)) return;
-  // Absolute same-origin URLs only (that's what the page sends).
+  // Absolute same-origin URLs only (that's what the page sends): pages and the app's hashed files, never another
+  // file it fetched (a document or schema by URL, fetched again here with cookies and kept).
   const urls = data.urls
     .slice(0, 500)
     .filter((u) => typeof u === 'string' && u.startsWith(ORIGIN + '/'))
     .map((u) => new URL(u))
-    .filter((url) => !bypass(url))
+    .filter((url) => !bypass(url) && (isHashed(url.pathname) || !FILE_RE.test(url.pathname)))
     .map((url) => url.href);
   event.waitUntil(
     caches.open(CACHE).then((cache) =>
@@ -320,6 +322,7 @@ self.addEventListener('fetch', (event) => {
   const req = event.request;
   if (req.method !== 'GET') return;
   if (req.cache === 'only-if-cached' && req.mode !== 'same-origin') return;
+  if (req.cache === 'no-store') return;
   const url = new URL(req.url);
   if (url.origin !== ORIGIN || bypass(url, req.headers)) return;
 

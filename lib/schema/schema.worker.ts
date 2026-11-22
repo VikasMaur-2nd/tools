@@ -3,7 +3,7 @@
  * last schema compiled and the last document parsed, so a request may leave out the text that didn't change.
  * The official meta-schemas (./meta.ts) are fetched from the app the first time a schema names one.
  */
-import { SchemaSession, type ValidateRequest, type ValidateResult } from './index';
+import { SchemaSession, type Resources, type ValidateRequest, type ValidateResult } from './index';
 
 export interface WorkerRequest {
   id: number;
@@ -16,7 +16,7 @@ export interface WorkerRequest {
   /** The document can't be read as its format (see ValidateRequest). */
   unread?: boolean;
   /** Fetched schemas (see ValidateRequest); null: the same as the last request's. */
-  resources: Record<string, string> | null;
+  resources: Resources | null;
 }
 
 export type WorkerReply = { id: number; result: ValidateResult } | { id: number; error: true };
@@ -24,7 +24,7 @@ export type WorkerReply = { id: number; result: ValidateResult } | { id: number;
 const session = new SchemaSession();
 let doc = '';
 let schema = '';
-let resources: Record<string, string> = {};
+let resources: Resources = {};
 
 /** Loading the meta-schemas into the session (false: it failed; the next schema that names one tries again). */
 let meta: Promise<boolean> | null = null;

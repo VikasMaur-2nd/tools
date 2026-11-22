@@ -345,6 +345,9 @@ test('interface translations: valid, complete and fresh', () => {
         if (typeof tr[v] !== 'string') lost.push(v);
         else if (!m && holders(tr[v]) !== holders(en[k])) errors.push(`${id} ${v}: placeholders ${holders(tr[v])} ≠ ${holders(en[k])}`);
       }
+      // (A plural translated in some of its language's forms only: the others would show in English.)
+      const have = variants.filter((v) => typeof tr[v] === 'string');
+      if (m && have.length && have.length < variants.length) errors.push(`${id} ${base}: no ${variants.filter((v) => !have.includes(v)).map((v) => v.slice(base.length + 1)).join(', ')} form`);
       const was = source[id]?.[base];
       const now = m ? textHash(`${en[base + '.one'] ?? ''}|${en[k]}`) : textHash(en[k]);
       if (was && was !== now) old.push(base);

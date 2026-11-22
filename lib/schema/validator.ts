@@ -7,8 +7,9 @@
  * - Compiling scans the schema for resources (`$id`, `id`), anchors (`$anchor`, `$dynamicAnchor`, `$recursiveAnchor`,
  *   plain-name `$id`s before 2019-09), checks the value of every keyword it knows (the schema problems), resolves
  *   every `$ref` and compiles every subschema once. Nothing is fetched here: a remote reference that isn't a resource
- *   of this schema or of `resources` (schemas fetched when the visitor asked: ./remote.ts, the official meta-schemas:
- *   ./meta.ts, and tests' external schemas) is reported as unresolved.
+ *   of this schema, of `resources` (schemas fetched when the visitor asked: ./remote.ts, tests' external schemas) or
+ *   of `fallback` (the official meta-schemas: ./meta.ts) is reported as unresolved. Every resource a $ref may name is
+ *   registered before any is resolved; a URI two different resources claim names neither (see claim).
  * - Validating walks the instance once per applicable subschema. Annotations for `unevaluatedProperties` and
  *   `unevaluatedItems` are tracked only when the schema uses them. Inside `anyOf`, `oneOf`, `not`, `if` and
  *   `contains` a branch is evaluated quietly (stopping at its first failure) unless its errors are wanted.
@@ -54,10 +55,16 @@ export interface CompileOptions {
   /** Check `format` (by default it is an annotation). */
   formats?: boolean;
   /**
-   * Other schemas by URI: schemas fetched when the visitor asked (./remote.ts), the official meta-schemas (./meta.ts),
-   * tests' external schemas. One schema may be here under several URIs (a meta-schema's http and https addresses).
+   * Other schemas by the URI they came from: schemas fetched when the visitor asked (./remote.ts), tests' external
+   * schemas. Those the schema refers to (in turn too) are registered with its own resources, before any $ref is
+   * resolved. One schema may be here under several URIs (where it was asked for, where it came from): the first is its
+   * base.
    */
   resources?: Map<string, JNode>;
+  /** Schemas for URIs nothing else names: the official meta-schemas (./meta.ts), by their https and http URLs. */
+  fallback?: Map<string, JNode>;
+  /** The URI the schema was retrieved from (a link's schema by URL): the base of its relative refs, when it has no $id. */
+  base?: string;
 }
 
 /** The base URI of a schema that doesn't name its own (refs relative to it stay inside this schema). */
@@ -109,6 +116,8 @@ interface Resource {
   recursive: boolean;
   /** The vocabularies its meta-schema enables (null: all of the draft's). */
   vocab: Set<string> | null;
+  /** A fallback (CompileOptions.fallback): any other resource takes a URI it has. */
+  soft?: boolean;
 }
 
 interface Place {
@@ -350,7 +359,15 @@ export class Validator {
   private resources = new Map<string, Resource>();
   private places = new Map<JNode, Place>();
   private compiled = new Map<JNode, S>();
-  private external: Map<string, JNode>;
+  /** CompileOptions.resources and .fallback by normalized URI (the first one with it). */
+  private external = new Map<string, JNode>();
+  private fallback = new Map<string, JNode>();
+  /** Each of those schemas' first URI there: its base (where it came from), the others naming it too. */
+  private baseOf = new Map<JNode, string>();
+  /** URIs two different resources claim (see claim): a $ref to one is unresolved. */
+  private clashes = new Set<string>();
+  /** The documents the scanned schemas refer to (their $ref, $dynamicRef and $recursiveRef URIs, without fragments). */
+  private wanted = new Set<string>();
   private formats: boolean;
   /** Some schema uses unevaluatedProperties / unevaluatedItems: annotations are tracked. */
   private needAnn = false;
@@ -361,38 +378,96 @@ export class Validator {
 
   constructor(schema: JNode, opts: CompileOptions = {}) {
     this.formats = !!opts.formats;
-    this.external = opts.resources ?? new Map();
-    let draft: Draft = opts.draft ?? 2020;
-    const sch = schema.t === OBJ ? member(schema, '$schema') : undefined;
-    let vocab: Set<string> | null = null;
-    if (sch && sch.t === STR) {
-      const d = draftOf(sch.v as string);
-      if (d === 3) this.issue('draft3', {}, sch, '$schema', true);
-      else if (d) {
-        draft = d;
-        this.fromSchema = true;
-      } else {
-        // A meta-schema in `resources` (a vocabulary's, or a test's custom one): its own `$schema` and `$vocabulary` decide.
-        const meta = this.metaSchema(sch.v as string);
-        if (meta) {
-          draft = meta.draft;
-          vocab = meta.vocab;
-          this.fromSchema = true;
-        } else this.issue('unknownSchema', { uri: sch.v as string, draft: DRAFT_NAME[draft] }, sch, '$schema', true);
+    for (const [into, from] of [[this.external, opts.resources], [this.fallback, opts.fallback]] as const) {
+      for (const [u, n] of from ?? []) {
+        const key = normalizeUri(splitFragment(u)[0]);
+        if (!into.has(key)) into.set(key, n);
+        if (!this.baseOf.has(n)) this.baseOf.set(n, key);
       }
     }
+    const { draft, vocab, known } = this.dialect(schema, opts.draft ?? 2020);
     this.draft = draft;
-    const res = (this.rootRes = this.newResource(DEFAULT_BASE, schema, draft));
+    this.fromSchema = known;
+    const res = (this.rootRes = this.newResource(opts.base ? normalizeUri(splitFragment(opts.base)[0]) : DEFAULT_BASE, schema, draft));
     res.vocab = vocab;
     this.scan(schema, res, '', draft, true);
+    this.register();
     this.root = this.compile(schema);
     this.drain();
   }
 
-  /** The draft and vocabularies of a meta-schema named by URI, if this schema or the resources include it. */
+  /**
+   * The draft and vocabularies a schema resource's `$schema` names: a draft's URI, or a meta-schema among the other
+   * schemas (a vocabulary's, a test's custom one) whose own `$schema` and `$vocabulary` decide. Without one, or one it
+   * doesn't know (reported), `dflt`.
+   */
+  private dialect(node: JNode, dflt: Draft): { draft: Draft; vocab: Set<string> | null; known: boolean } {
+    const sch = node.t === OBJ ? member(node, '$schema') : undefined;
+    if (sch && sch.t === STR) {
+      const d = draftOf(sch.v as string);
+      if (d && d !== 3) return { draft: d, vocab: null, known: true };
+      if (d === 3) this.issue('draft3', {}, sch, '$schema', true);
+      else {
+        const meta = this.metaSchema(sch.v as string);
+        if (meta) return { ...meta, known: true };
+        this.issue('unknownSchema', { uri: sch.v as string, draft: DRAFT_NAME[dflt] }, sch, '$schema', true);
+      }
+    }
+    return { draft: dflt, vocab: null, known: false };
+  }
+
+  /**
+   * Registers the other schemas (CompileOptions.resources) this one refers to, and those they refer to in turn, before
+   * any $ref is resolved: what a URI names doesn't depend on the order refs are met. One that nothing refers to stays
+   * out (fetched for an earlier version of the schema, say). The fallbacks come last, for what nothing else names.
+   */
+  private register() {
+    for (;;) {
+      const open = [...this.wanted].filter((k) => !this.resources.has(k) && !this.clashes.has(k));
+      const hard = open.filter((k) => this.external.has(k));
+      const list = hard.length ? hard : open.filter((k) => this.fallback.has(k));
+      if (!list.length) return;
+      for (const k of list) if (!this.resources.has(k)) this.addExternal(k, !hard.length);
+    }
+  }
+
+  /** Registers the other schema (a fallback if `soft`) known by URI `key`, and its resources; its resource for `key`. */
+  private addExternal(key: string, soft: boolean): Resource | undefined {
+    const node = (soft ? this.fallback : this.external).get(key)!;
+    const known = this.places.get(node)?.res;
+    if (known && known.root === node) {
+      // (Registered before under another of its URIs, http for https say: the same resource, its anchors included.)
+      this.claim(key, known, null);
+      return this.resources.get(key);
+    }
+    // (Read in the draft its own `$schema` names, else in this schema's; based where it came from, named by `key` too.)
+    const { draft, vocab } = this.dialect(node, this.draft);
+    const res = this.newResource(this.baseOf.get(node) ?? key, node, draft, soft);
+    res.vocab = vocab;
+    this.claim(key, res, null);
+    this.scan(node, res, '', draft, true);
+    return this.resources.get(key);
+  }
+
+  /**
+   * Names resource `res` by `key`. Another resource with it: a URI can't name two, so it names neither (a $ref to it
+   * is unresolved, the clash reported once, at `at`), unless one of them is a fallback: the other one keeps it.
+   */
+  private claim(key: string, res: Resource, at: JNode | null) {
+    const had = this.resources.get(key);
+    if (!had || had.soft) {
+      if (!res.soft || !had) this.resources.set(key, res);
+      return;
+    }
+    if (had.root === res.root || res.soft || this.clashes.has(key)) return;
+    this.clashes.add(key);
+    this.issue('duplicateId', { id: key }, at, at?.key === 'id' ? 'id' : '$id');
+  }
+
+  /** The draft and vocabularies of a meta-schema named by URI, if the other schemas include it. */
   private metaSchema(uri: string): { draft: Draft; vocab: Set<string> | null } | null {
     const key = normalizeUri(splitFragment(uri)[0]);
-    const node = [...this.external].find(([u]) => normalizeUri(splitFragment(u)[0]) === key)?.[1];
+    const node = this.external.get(key) ?? this.fallback.get(key);
     if (!node || node.t !== OBJ) return null;
     const own = member(node, '$schema');
     const d = own && own.t === STR ? draftOf(own.v as string) : null;
@@ -416,14 +491,10 @@ export class Validator {
     return i;
   }
 
-  private newResource(uri: string, root: JNode, draft: Draft): Resource {
-    const r: Resource = { uri, root, draft, anchors: new Map(), dynamic: new Map(), recursive: false, vocab: null };
-    const had = this.resources.get(uri);
-    if (had && had.root !== root) {
-      const id = root.t === OBJ ? member(root, draft === 4 ? 'id' : '$id') ?? null : null;
-      this.issue('duplicateId', { id: uri }, id, '$id', true);
-    } else this.resources.set(uri, r);
-    return had && had.root !== root ? had : r;
+  private newResource(uri: string, root: JNode, draft: Draft, soft = false): Resource {
+    const r: Resource = { uri, root, draft, anchors: new Map(), dynamic: new Map(), recursive: false, vocab: null, ...(soft && { soft }) };
+    this.claim(uri, r, root.t === OBJ ? (member(root, draft === 4 ? 'id' : '$id') ?? null) : null);
+    return r;
   }
 
   /** Registers the resources and anchors in and under schema `node`. */
@@ -446,17 +517,18 @@ export class Validator {
         const [uri, frag] = splitFragment(resolveUri(parent.uri, raw));
         if (frag && draft >= 2019) this.issue('idFragment', { id: raw }, id, idKw, true);
         if (!isRoot || uri !== DEFAULT_BASE) {
-          // An embedded resource may name its own draft.
-          const sch = member(node, '$schema');
-          const d = sch && sch.t === STR ? draftOf(sch.v as string) : null;
-          if (d && d !== 3) draft = d;
           const key = normalizeUri(uri);
-          // (A root keeps the URI it was found by too: the default base, or an external schema's retrieval URI.)
+          // (A root keeps the URI it was found by too: the default base, or an external schema's retrieval URI. Its
+          // draft is known: an embedded resource may name its own.)
           if (isRoot) {
             parent.uri = key;
-            parent.draft = draft;
-            this.resources.set(key, parent);
-          } else res = this.newResource(key, node, draft);
+            this.claim(key, parent, id);
+          } else {
+            const dia = this.dialect(node, draft);
+            draft = dia.draft;
+            res = this.newResource(key, node, draft, parent.soft);
+            res.vocab = dia.vocab;
+          }
           ptr = '';
         }
         const name = decodeFragment(frag) ?? '';
@@ -484,6 +556,11 @@ export class Validator {
       if (a && a.t === BOOL && a.v === true && res.root === node) res.recursive = true;
     }
     this.places.set(node, { res, ptr, draft });
+    // (The documents it refers to: registered before refs are resolved, see register.)
+    for (const kw of ['$ref', '$dynamicRef', '$recursiveRef']) {
+      const r = member(node, kw);
+      if (r && r.t === STR) this.wanted.add(normalizeUri(splitFragment(resolveUri(res.uri, r.v as string))[0]));
+    }
     for (const m of members(node)) {
       const k = m.key as string;
       const p = ptr + '/' + escapeToken(k);
@@ -906,23 +983,11 @@ export class Validator {
     const [uri, frag] = splitFragment(abs);
     const key = normalizeUri(uri);
     let res = this.resources.get(key);
-    if (!res) {
-      const ext = [...this.external].find(([u]) => normalizeUri(splitFragment(u)[0]) === key)?.[1];
-      const known = ext && this.places.get(ext)?.res;
-      if (known && known.root === ext) {
-        // (Read before under another of its URIs, http for https say: the same resource, its anchors included.)
-        res = known;
-        this.resources.set(key, res);
-      } else if (ext) {
-        // (It is read in the draft its own `$schema` names, else in the referring schema's.)
-        const own = ext.t === OBJ ? member(ext, '$schema') : undefined;
-        const d = own && own.t === STR ? draftOf(own.v as string) : null;
-        const draft: Draft = d && d !== 3 ? d : s.draft;
-        res = this.newResource(key, ext, draft);
-        this.scan(ext, res, '', draft, true);
-        // (Its own `$id`, if any, named it again: the retrieval URI keeps working.)
-        res = this.resources.get(key) ?? res;
-      }
+    // (One only a JSON Pointer reaches wasn't scanned before refs were resolved: registered now.)
+    if (!res && !this.clashes.has(key) && (this.external.has(key) || this.fallback.has(key))) res = this.addExternal(key, !this.external.has(key));
+    if (this.clashes.has(key)) {
+      this.issue('unresolved', { ref: raw, uri: key, why: 'duplicate' }, at, kw);
+      return null;
     }
     if (!res) {
       // A JSON Pointer or anchor in another resource of this schema, named by its $id plus a fragment, still resolves above.

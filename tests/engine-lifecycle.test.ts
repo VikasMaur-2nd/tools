@@ -60,7 +60,7 @@ function session() {
   const on = (type: string, fn: () => void) => { if (!listeners.has(type)) listeners.set(type, new Set()); listeners.get(type)!.add(fn); };
   const off = (type: string, fn: () => void) => { listeners.get(type)?.delete(fn); };
   const storage = new Map<string, string>();
-  const fetches: { url: string; mode?: string; signal?: AbortSignal; reply: ReturnType<typeof later<unknown>> }[] = [];
+  const fetches: { url: string; mode?: string; cache?: string; signal?: AbortSignal; reply: ReturnType<typeof later<unknown>> }[] = [];
   const sw: Dynamic = { listeners: [] as ((e: { data: unknown }) => void)[], registered: 0 };
   let current: Dynamic | null = null;
   const window: Dynamic = { setTimeout: defer, requestIdleCallback: defer, cancelIdleCallback: cancel, addEventListener: on, removeEventListener: off };
@@ -82,10 +82,10 @@ function session() {
         register: () => { sw.registered++; return new Promise(() => {}); },
       },
     }),
-    fetch: (url: unknown, init?: { mode?: string; signal?: AbortSignal }) => {
+    fetch: (url: unknown, init?: { mode?: string; cache?: string; signal?: AbortSignal }) => {
       const reply = later<unknown>();
       init?.signal?.addEventListener('abort', () => reply.fail(Object.assign(new Error('The operation was aborted'), { name: 'AbortError' })));
-      fetches.push({ url: String(url), mode: init?.mode, signal: init?.signal, reply });
+      fetches.push({ url: String(url), mode: init?.mode, cache: init?.cache, signal: init?.signal, reply });
       return reply.promise;
     },
     Worker: class {
@@ -356,6 +356,17 @@ test('a URL asked for stops the download of the one before, which says nothing',
   await Promise.all([first, second]);
   assert.deepEqual(loads, ['1:b.json']);
   assert.deepEqual(toasts, ['Fetching…', 'Fetching…', 'Loaded b.example']);
+});
+
+test('a document or schema by URL is fetched past the service worker\'s cache (no-store), its failure probe too (review 2, finding 2)', async () => {
+  const { engine, fetches } = loading();
+  const got = engine.fetchUrl('https://tools.example/data.json');
+  assert.equal(fetches[0].cache, 'no-store');
+  fetches[0].reply.fail(new TypeError('Failed to fetch'));
+  await settled();
+  assert.deepEqual(fetches.map((f) => [f.mode, f.cache]), [[undefined, 'no-store'], ['no-cors', 'no-store']]);
+  fetches[1].reply.fail(new TypeError('Failed to fetch'));
+  await got;
 });
 
 test("a file opened while a link's document downloads wins, and the link stays quiet", async () => {
@@ -1283,4 +1294,54 @@ test('a big input in another format converts in the worker, its JSON parsed in s
   assert.equal(s.state.status.kind, 'error');
   assert.equal(s.state.status.p, yaml.length + 3);
   assert.equal(s.state.status.src, 'yaml');
+});
+
+test('the source worker\'s places replies go to the Schema view\'s hook, and it hears when the worker ends (review 2, finding 6)', () => {
+  const s = sourcing('id,name\n1,Ada\n', 'csv');
+  const heard: unknown[] = [];
+  s.engine.placesIn = (d: unknown) => heard.push(d === null ? null : JSON.stringify(d));
+  const w = s.engine.sourceWorker();
+  let converted = 0;
+  s.engine.sourceConverted = () => converted++;
+  w.onmessage({ data: { seq: 3, places: [{ p: 8, exact: true }] } });
+  w.onmessage({ data: { seq: 1, json: '[]' } });
+  assert.deepEqual([heard, converted], [['{"seq":3,"places":[{"p":8,"exact":true}]}'], 1]);
+  w.onerror({ preventDefault() {} });
+  assert.deepEqual(heard.at(-1), null);
+});
+
+test('the warm-up hands the service worker the page and the app files it loaded, never what it fetched for the visitor (review 2, finding 2)', async () => {
+  const s = session();
+  const posted: Dynamic[] = [];
+  s.location.pathname = '/de/tools/json-schema-validator';
+  Object.assign(s.navigator.serviceWorker, { register: () => Promise.resolve(), ready: Promise.resolve({ active: { postMessage: (m: Dynamic) => posted.push(m) } }) });
+  const o = 'https://tools.example';
+  const entries = [
+    { name: `${o}/_next/static/chunks/a.js`, initiatorType: 'script' },
+    { name: `${o}/icon-192.png`, initiatorType: 'img' },
+    // Fetched: a schema, a document by URL, an API answer (a page's dictionaries come with its HTML); and analytics.
+    { name: `${o}/schema.json`, initiatorType: 'fetch' },
+    { name: `${o}/data/doc.json?x=1`, initiatorType: 'xmlhttprequest' },
+    { name: `${o}/api/schema`, initiatorType: 'fetch' },
+    { name: `${o}/i18n/schema-strings.de.0123456789ab.json`, initiatorType: 'fetch' },
+    { name: `${o}/_vercel/insights/script.js`, initiatorType: 'script' },
+    { name: 'https://other.example/x.js', initiatorType: 'script' },
+  ];
+  const real = performance.getEntriesByType;
+  performance.getEntriesByType = (() => entries) as unknown as typeof performance.getEntriesByType;
+  try {
+    s.engine.registerSW();
+    await s.drain();
+    await s.drain();
+  } finally {
+    performance.getEntriesByType = real;
+  }
+  assert.equal(posted.length, 1);
+  assert.deepEqual([...posted[0].urls], [
+    `${o}/`,
+    `${o}/de`,
+    `${o}/de/tools/json-schema-validator`,
+    `${o}/_next/static/chunks/a.js`,
+    `${o}/icon-192.png`,
+  ]);
 });

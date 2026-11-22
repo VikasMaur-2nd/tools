@@ -4,7 +4,7 @@
  * document, a catastrophic pattern) stops it: the worker is ended and a new one starts. A run past its time limit
  * ends the same way, reported as a timeout instead of hanging.
  */
-import type { ValidateRequest, ValidateResult } from './index';
+import type { Resources, ValidateRequest, ValidateResult } from './index';
 import type { WorkerReply, WorkerRequest } from './schema.worker';
 
 /** What the client needs of a Worker (tests pass a fake). */
@@ -32,7 +32,7 @@ interface Wanted {
 
 const defaultLimit = (chars: number) => 5000 + Math.ceil(chars / 1e6) * 2000;
 /** No fetched schemas. */
-const NONE: Record<string, string> = {};
+const NONE: Resources = {};
 
 export class SchemaClient {
   private port: Port | null = null;
@@ -41,7 +41,7 @@ export class SchemaClient {
   private sentDoc: string | null = null;
   private sentSchema: string | null = null;
   /** The fetched schemas the worker has (the same object: not sent again). */
-  private sentResources: Record<string, string> | null = null;
+  private sentResources: Resources | null = null;
   private seq = 0;
   private create: () => Port;
   private yieldAfter: number;
