@@ -638,16 +638,8 @@ const asNew = (res) => new Response(res.body, { status: res.status, statusText: 
 
 async function staleWhileRevalidate(event, req) {
   const hit = await cachedCopy(req);
-  // The network's answer goes to the page as soon as its headers come; storing it (its body) is bounded on its own.
-  const net = fetch(req).then((res) => {
-    if (cacheable(res)) {
-      const copy = res.clone();
-      try {
-        event.waitUntil(within(caches.open(CACHE).then((c) => c.put(req, copy)), FETCH_MS).catch(() => {}));
-      } catch {} // (the event is over: a cached copy answered, and the headers came past FETCH_MS)
-    }
-    return res;
-  });
-  event.waitUntil(within(net, FETCH_MS).catch(() => {}));
-  return hit || net;
+  // The cache's copy is a download of its own, given up whole (headers and body) at FETCH_MS: nothing lands late,
+  // and the page's response (the network's when nothing is cached) streams to it untouched.
+  event.waitUntil(download(req.url, { credentials: 'same-origin' }).then((res) => cacheable(res) && caches.open(CACHE).then((c) => c.put(req, res))).catch(() => {}));
+  return hit || fetch(req);
 }
