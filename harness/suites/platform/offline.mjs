@@ -4,7 +4,8 @@
 // connection. Build A is `default`, A′ is `redeploy` (the same code, a few chunks with new hashes).
 // Ported from ~/.cache/rv/c/sw-offline.mjs: 40 default checks plus 3 swupdate and 8 upgrade checks.
 // Four added preflight assertions bring those to 55 checks per engine; the deploy clean-up scenarios
-// (toolpage: a deploy seen only on a tool page; rollback: A, A′, then A again) add 29: 84.
+// (toolpage: a deploy seen only on a tool page; rollback: A, A′, then A again; homeretry: a shell that
+// failed to follow a tool page, tried again) add 33: 88.
 // Every wait is on the worker (a probe the proxy adds to /sw.js reports its unfinished waitUntil work) or
 // on the cache, never on time.
 import { defaults } from '../../lib/api.mjs';
@@ -550,6 +551,36 @@ test("rollback: a deploy back to the previous build keeps both builds' tabs whol
     t.check(o.ok && o.tool === 1, 'rollback offline after cleanup: / opens', o);
     await features(t, off, 'rollback offline after cleanup');
     await checkErrors(t, 'rollback');
+  } finally {
+    proxy.close();
+  }
+});
+
+test("homeretry: a shell that couldn't follow a tool page to its new build follows on the next visit", { variant: 'redeploy' }, async (t) => {
+  const A = (await serveVariant('default')).base;
+  const proxy = await startProxy({ A, A2: t.base });
+  const TOOL = '/tools/json-validator';
+  try {
+    const a2 = await closure(t.base);
+    await t.context.addInitScript(WATCH_POSTS);
+    await t.page.goto(proxy.origin + TOOL, { waitUntil: 'load' });
+    await swIdle(t.page, { posted: true, timeout: 90_000 });
+    t.assert(await waitInCache(t.page, ['/', TOOL]), 'homeretry: the tool page and the shell are cached');
+    // The redeploy, while '/' fails: a new tab gets the tool page from the network, but the shell can't follow.
+    proxy.deploy('A2');
+    proxy.net.fail.add('/');
+    const visitor = await t.context.newPage();
+    await visitor.goto(proxy.origin + TOOL, { waitUntil: 'load' });
+    await swIdle(visitor, { posted: true, timeout: 90_000 });
+    const kept = (await cachedText(visitor, '/')) || '';
+    t.check(!!kept && !a2.named.every((p) => kept.includes(p)), "homeretry: while '/' fails, the cached shell stays the one that works");
+    // '/' answers again: the next visit to the same build's tool page brings the shell along.
+    proxy.net.fail.delete('/');
+    await quiet(visitor);
+    await visitor.reload({ waitUntil: 'load' });
+    t.check(await newShell(t, visitor, a2.named), 'homeretry: the next visit to the tool page brings the shell to the new build');
+    await swIdle(visitor, { posted: true, timeout: 90_000 });
+    await checkErrors(t, 'homeretry');
   } finally {
     proxy.close();
   }
