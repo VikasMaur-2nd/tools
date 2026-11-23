@@ -76,6 +76,10 @@ function world() {
     tabs: [] as string[],
     /** Fetches of a path wait for these, one each (see hold). */
     holds: new Map<string, Promise<void>[]>(),
+    /** Paths whose answer's headers come but whose body never ends. */
+    stallBody: new Set<string>(),
+    /** The registration's workers: which one is installing (see install), by number. */
+    installing: 0,
     now: 1_700_000_000_000,
   };
 }
@@ -85,6 +89,7 @@ const settle = async () => {
   for (let i = 0; i < 5; i++) await new Promise((r) => setTimeout(r, 0));
 };
 
+let workers = 0;
 function worker(source = readFileSync(join(process.cwd(), 'public/sw.js'), 'utf8'), env = world()) {
   const key = (r: string | { url: string }) => new URL(typeof r === 'string' ? r : r.url, ORIGIN).href.split('#')[0];
   const response = (body: string, type: string, status = 200) => {
@@ -116,14 +121,22 @@ function worker(source = readFileSync(join(process.cwd(), 'public/sw.js'), 'utf8
     if (!env.online) throw new TypeError('Failed to fetch');
     env.fetched.push(url.pathname);
     const body = env.files[url.pathname];
+    if (env.stallBody.has(url.pathname)) {
+      const res = new Response(new ReadableStream({ start: (c) => c.enqueue(new TextEncoder().encode(String(body ?? ''))) }), { headers: { 'content-type': 'application/octet-stream' } });
+      Object.defineProperty(res, 'type', { value: 'basic' });
+      return res;
+    }
     if (typeof body === 'number') return response('', 'text/plain', body);
     if (body === undefined) return response('', 'text/html', 404);
     const type = url.pathname.endsWith('.js') ? 'text/javascript' : url.pathname.endsWith('.css') ? 'text/css' : /\.\w+$/.test(url.pathname) ? 'application/octet-stream' : 'text/html; charset=utf-8';
     return response(body, type);
   };
   const listeners: Record<string, (e: unknown) => void> = {};
+  const me = ++workers;
   const self = {
     location: { origin: ORIGIN },
+    // (Only whether a worker is installing: the one installing is this one during its install event.)
+    registration: { get installing() { return env.installing ? {} : null; }, waiting: null },
     addEventListener: (type: string, fn: (e: unknown) => void) => void (listeners[type] = fn),
     skipWaiting() {},
     clients: {
@@ -191,7 +204,21 @@ function worker(source = readFileSync(join(process.cwd(), 'public/sw.js'), 'utf8
       env.holds.set(path, [...(env.holds.get(path) ?? []), p]);
       return release;
     },
-    install: () => dispatch('install'),
+    /** Installs this worker (the registration's installing one meanwhile), which then takes over (skipWaiting). */
+    install: async () => {
+      env.installing = me;
+      try {
+        await dispatch('install');
+      } finally {
+        if (env.installing === me) env.installing = 0;
+      }
+    },
+    /** Starts installing without waiting: `done` once its install event is (the registration's installing one until then). */
+    installSoon: () => {
+      env.installing = me;
+      const { done } = start('install');
+      return done.finally(() => void (env.installing === me && (env.installing = 0)));
+    },
     activate: () => dispatch('activate'),
     open,
     visit,
@@ -212,6 +239,8 @@ function worker(source = readFileSync(join(process.cwd(), 'public/sw.js'), 'utf8
     env,
     /** A fetch() the page makes (not a navigation), with its cache mode: the SW's answer, null if it leaves it alone. */
     get: (path: string, cache = 'default') => dispatch('fetch', { request: { method: 'GET', url: ORIGIN + path, mode: 'cors', headers: new Headers(), destination: '', cache } }),
+    /** The same, not waited for: the answer (`res`), and `done` once the worker is. */
+    getSoon: (path: string) => start('fetch', { request: { method: 'GET', url: ORIGIN + path, mode: 'cors', headers: new Headers(), destination: '', cache: 'default' } }),
   };
 }
 
@@ -953,4 +982,32 @@ test('service worker: what the page fetches for the visitor (no-store) is never 
   await fresh.post(['/', '/schema.json', '/tools/json-graph', '/_next/static/chunks/a-graph.js']);
   assert.ok(!fresh.fetched.includes('/schema.json') && !fresh.has('/schema.json'));
   assert.ok(fresh.has('/tools/json-graph') && fresh.has('/_next/static/chunks/a-graph.js'));
+});
+
+// ── Review round 1 (PR #40) ──────────────────────────────────────────────────────────────────────────
+
+test("service worker: a file that isn't hashed goes to the page as soon as its headers come, whatever its body does (finding 6)", async () => {
+  const sw = worker();
+  sw.serve({ ...build('a'), '/manifest.webmanifest': '{"name":"Tool"}' });
+  await sw.install();
+  await sw.post(['/']);
+  // Not cached yet: the headers come, the body never ends. The page gets the response (and reads it as it streams).
+  sw.env.stallBody.add('/manifest.webmanifest');
+  const first = sw.getSoon('/manifest.webmanifest');
+  assert.ok(await settled(first.res), 'answered at its headers');
+  assert.ok((await first.res)?.ok);
+  assert.ok(!(await settled(first.done)), 'storing it waits on the body');
+  sw.advance(30_000);
+  assert.ok(await settled(first.done), 'given up after 30 s');
+  assert.ok(!sw.has('/manifest.webmanifest'));
+  // Cached, and the network's headers never come: the cached copy answers at once, and the worker gets done after 30 s.
+  sw.env.stallBody.delete('/manifest.webmanifest');
+  await sw.get('/manifest.webmanifest');
+  assert.equal(sw.cached('/manifest.webmanifest'), '{"name":"Tool"}');
+  sw.hold('/manifest.webmanifest');
+  const second = sw.getSoon('/manifest.webmanifest');
+  assert.equal(await (await second.res)?.text(), '{"name":"Tool"}');
+  assert.ok(!(await settled(second.done)));
+  sw.advance(30_000);
+  assert.ok(await settled(second.done));
 });

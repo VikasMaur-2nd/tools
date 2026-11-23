@@ -594,10 +594,15 @@ const asNew = (res) => new Response(res.body, { status: res.status, statusText: 
 
 async function staleWhileRevalidate(event, req) {
   const hit = await cachedCopy(req);
+  // The network's answer goes to the page as soon as its headers come; storing it (its body) is bounded on its own.
   const net = fetch(req).then((res) => {
-    if (!cacheable(res)) return res;
-    const copy = res.clone();
-    return caches.open(CACHE).then((c) => c.put(req, copy)).then(() => res, () => res);
+    if (cacheable(res)) {
+      const copy = res.clone();
+      try {
+        event.waitUntil(within(caches.open(CACHE).then((c) => c.put(req, copy)), FETCH_MS).catch(() => {}));
+      } catch {} // (the event is over: a cached copy answered, and the headers came past FETCH_MS)
+    }
+    return res;
   });
   event.waitUntil(within(net, FETCH_MS).catch(() => {}));
   return hit || net;
