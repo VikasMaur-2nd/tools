@@ -41,7 +41,7 @@
  * and still load any chunk of it (a feature opened for the first time, offline).
  * A generation's files are deleted once all its tabs are closed (checked on later
  * visits and page messages), or RETIRE_MS after it, unless a cached page needs them
- * again. A tool page showing a new build also brings '/' and its language's home to
+ * again; never while a worker is installing (see arriving). A tool page showing a new build also brings '/' and its language's home to
  * it, so a visitor who never opens '/' gets the same clean-up. The cache so holds
  * the current build, the builds its cached pages were saved with, and older builds
  * only while their tabs live. The record ('/sw.js?retired') is never served. Why no
@@ -316,6 +316,14 @@ async function liveTabs() {
 /** Among a generation's tabs: one being opened without an id when it began (see tidy). */
 const UNSEEN = '?';
 
+/**
+ * Whether a worker is on its way in: this one while it installs, or a newer one installing or waiting. The
+ * worker still active meanwhile may be storing a page whose files it checked before (main's checks none
+ * again), so nothing is deleted until the one coming in is the only one: the one it replaces is stopped
+ * when it becomes the active one (the spec's Activate).
+ */
+const arriving = () => !!(self.registration && (self.registration.installing || self.registration.waiting));
+
 /** The record's generations of retired files, [{ urls, clients, at }] (see the header). `live`: the tabs open now, or null if unknown. */
 function generations(rec, live) {
   if (!rec) return [];
@@ -399,7 +407,8 @@ async function tidy(cache, replaced, posted, from) {
     const clients = known ? Array.from(ids).filter((id) => id !== replaced.fresh) : [];
     if (urls.length) gens.push({ urls, clients: clients.concat(unnamed || !known ? [UNSEEN] : []), at: now });
   }
-  const done = known ? gens.filter((g) => !g.clients.length || now - g.at >= RETIRE_MS) : [];
+  // (Nothing goes while a worker is on its way in: see arriving. Its generations wait for the next tidy-up.)
+  const done = known && !arriving() ? gens.filter((g) => !g.clients.length || now - g.at >= RETIRE_MS) : [];
   if (done.length) {
     if (!keep) keep = await needed(cache, await cache.keys());
     await Promise.all([].concat(...done.map((g) => g.urls)).filter((u) => !keep.has(u)).map((u) => cache.delete(u)));

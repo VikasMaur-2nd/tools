@@ -1057,3 +1057,35 @@ test("service worker: main's worker brought back never deletes what a tab still 
   main.offline();
   assert.deepEqual(await loadsAll(main, 'anon', filesOf('a')), []);
 });
+
+test("service worker: installing deletes nothing, so a page the worker before it is still storing keeps its files (finding 1)", async () => {
+  const env = world();
+  const main = worker(readFileSync(join(process.cwd(), 'harness/suites/platform/fixtures/main-sw.js'), 'utf8'), env);
+  main.serve(site('a'));
+  await main.install();
+  await main.activate();
+  main.tabs(['t']);
+  await main.post(['/'], 't');
+  // The tab opens the diff tool; main's worker stores build a's page, waiting for its stylesheet.
+  const release = main.hold('/_next/static/chunks/a-diff.css');
+  const nav = main.open('/tools/json-diff', 't');
+  assert.match((await nav.text)!, /Diff a/);
+  // Meanwhile build b is deployed (the server keeps build a's files) and this worker installs; the tab closes.
+  main.serve({ ...site('a'), ...site('b') });
+  main.tabs([]);
+  const sw = worker(undefined, env);
+  await sw.install();
+  assert.match(sw.cached('/')!, /Home b/);
+  // Main's worker gets its stylesheet and stores the page; then this one takes over and a tab reports in.
+  release();
+  await nav.done;
+  assert.match(sw.cached('/tools/json-diff')!, /Diff a/);
+  await sw.activate();
+  sw.tabs(['n']);
+  await sw.post(['/'], 'n');
+  // Offline, the cached diff page opens with every file it names.
+  sw.offline();
+  assert.match((await sw.visit('/tools/json-diff', 'off'))!, /Diff a/);
+  const named = ['app.css', 'main.js', 'page.js', 'diff.css', 'diff.js'].map((f) => '/_next/static/chunks/a-' + f);
+  assert.deepEqual(await loadsAll(sw, 'off', named), []);
+});
