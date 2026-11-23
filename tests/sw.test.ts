@@ -12,13 +12,18 @@ import { runInNewContext } from 'node:vm';
  */
 
 const ORIGIN = 'https://tools.example';
-const RETIRED = ORIGIN + '/sw.js?retired';
+const RECORD = ORIGIN + '/sw.js?generations';
+/** The record of the worker before generations (main's): one list. */
+const LEGACY = ORIGIN + '/sw.js?retired';
 type Files = Record<string, string | number>;
 
-/** A page of build `tag`: an icon, the stylesheet, the main script and (in its RSC payload) the page's script, then `extra`. */
+/**
+ * A page of build `tag`: an icon, the stylesheet, the main script and (in its RSC payload, with the build id) the
+ * page's script, then `extra`.
+ */
 const html = (tag: string, title: string, extra = '') =>
   `<!doctype html><title>${title}</title><link rel="icon" href="/icon.svg"><link rel="stylesheet" href="/_next/static/chunks/${tag}-app.css">` +
-  `<script src="/_next/static/chunks/${tag}-main.js"></script>${extra}<script>self.__next_f.push([1,"\\"/_next/static/chunks/${tag}-page.js\\""])</script>`;
+  `<script src="/_next/static/chunks/${tag}-main.js"></script>${extra}<script>self.__next_f.push([1,"{\\"b\\":\\"${tag}\\",\\"c\\":\\"/_next/static/chunks/${tag}-page.js\\"}"])</script>`;
 
 /** A build: '/' and a tool page naming their scripts, and chunks those load later. `tag` makes its hashed names. */
 function build(tag: string): Files {
@@ -28,7 +33,8 @@ function build(tag: string): Files {
     // A font subset only some text uses: named by the stylesheet, never by the HTML.
     [`/_next/static/chunks/${tag}-app.css`]: `@font-face{font-family:M;src:url(../media/${tag}-greek.woff2)format("woff2");unicode-range:U+370-3FF}body{}`,
     [`/_next/static/media/${tag}-greek.woff2`]: 'font',
-    [`/_next/static/chunks/${tag}-main.js`]: `x.l("static/chunks/${tag}-graph.js");y("static/chunks/not-a-file.js")`,
+    // (And a name that is no file: in a real build, the chunks directory.)
+    [`/_next/static/chunks/${tag}-main.js`]: `x.l("static/chunks/${tag}-graph.js");y("/_next/static/chunks/")`,
     [`/_next/static/chunks/${tag}-page.js`]: 'page()',
     // A lazily loaded feature that loads one more chunk of its own, and a font.
     [`/_next/static/chunks/${tag}-graph.js`]: `s.l("static/chunks/${tag}-export.js");f("static/media/${tag}-font.woff2")`,
@@ -76,10 +82,13 @@ function world() {
     tabs: [] as string[],
     /** Fetches of a path wait for these, one each (see hold). */
     holds: new Map<string, Promise<void>[]>(),
+    /** Runs when the cache's keys are read (a moment inside a clean-up's scan). */
+    onKeys: null as null | (() => void),
     /** Paths whose answer's headers come but whose body never ends. */
     stallBody: new Set<string>(),
-    /** The registration's workers: which one is installing (see install), by number. */
+    /** The registration's workers: which one is installing and which one is active (see install), by number. */
     installing: 0,
+    active: 0,
     now: 1_700_000_000_000,
   };
 }
@@ -109,7 +118,10 @@ function worker(source = readFileSync(join(process.cwd(), 'public/sw.js'), 'utf8
       env.store.set(key(r), { body: await res.text(), type: res.headers.get('content-type') ?? '', url });
     },
     delete: async (r: string | { url: string }) => env.store.delete(key(r)),
-    keys: async () => [...env.store.entries()].map(([url, e]) => ({ url: env.fragments && e.url ? e.url : url })),
+    keys: async () => {
+      env.onKeys?.();
+      return [...env.store.entries()].map(([url, e]) => ({ url: env.fragments && e.url ? e.url : url }));
+    },
   };
   const fetchFn = async (r: string | { url: string }, init?: { signal?: AbortSignal }) => {
     const url = new URL(key(r));
@@ -136,7 +148,7 @@ function worker(source = readFileSync(join(process.cwd(), 'public/sw.js'), 'utf8
   const self = {
     location: { origin: ORIGIN },
     // (Only whether a worker is installing: the one installing is this one during its install event.)
-    registration: { get installing() { return env.installing ? {} : null; }, waiting: null },
+    registration: { get installing() { return env.installing ? {} : null; }, waiting: null, get active() { return env.active ? {} : null; } },
     addEventListener: (type: string, fn: (e: unknown) => void) => void (listeners[type] = fn),
     skipWaiting() {},
     clients: {
@@ -211,13 +223,8 @@ function worker(source = readFileSync(join(process.cwd(), 'public/sw.js'), 'utf8
         await dispatch('install');
       } finally {
         if (env.installing === me) env.installing = 0;
+        env.active = me;
       }
-    },
-    /** Starts installing without waiting: `done` once its install event is (the registration's installing one until then). */
-    installSoon: () => {
-      env.installing = me;
-      const { done } = start('install');
-      return done.finally(() => void (env.installing === me && (env.installing = 0)));
     },
     activate: () => dispatch('activate'),
     open,
@@ -234,7 +241,7 @@ function worker(source = readFileSync(join(process.cwd(), 'public/sw.js'), 'utf8
     cached: (path: string) => env.store.get(ORIGIN + path)?.body,
     has: (path: string) => env.store.has(ORIGIN + path),
     statics: () => [...env.store.keys()].filter((u) => u.includes('/_next/static/')).map((u) => new URL(u).pathname).sort(),
-    record: () => (env.store.has(RETIRED) ? JSON.parse(env.store.get(RETIRED)!.body) : null),
+    record: () => (env.store.has(RECORD) ? JSON.parse(env.store.get(RECORD)!.body) : null),
     fetched: env.fetched,
     env,
     /** A fetch() the page makes (not a navigation), with its cache mode: the SW's answer, null if it leaves it alone. */
@@ -260,7 +267,7 @@ test('service worker: installing caches what the shell names, and every chunk it
   assert.deepEqual(sw.statics(), filesOf('a'));
   assert.ok(sw.has('/icon.svg'));
   // A name inside a script that is no file holds nothing back, and isn't kept.
-  assert.ok(!sw.has('/_next/static/chunks/not-a-file.js'));
+  assert.ok(!sw.has('/_next/static/chunks/'));
 });
 
 test('service worker: a shell whose files fail to arrive never replaces the one that works', async () => {
@@ -424,10 +431,13 @@ test('service worker: a visitor who only opens tool pages gets old builds cleane
     sw.tabs([tag + '-tab']);
     assert.match((await sw.visit('/de/tools/json-graph', tag + '-tab'))!, new RegExp('Grafik ' + tag));
     await sw.post(['/', '/de', '/de/tools/json-graph'], tag + '-tab');
-    // '/' and the German home, never opened again, are brought to the new build with it, and no tab of
-    // the old build is open (this one runs the new build): nothing of the old build is left.
+    // '/' and the German home, never opened again, are brought to the new build with it. The old build's
+    // files stay while that tab is open (it was open at the deploy); a later tab's report, once it's closed,
+    // finds nothing of the old build left.
     assert.match(sw.cached('/')!, new RegExp('Home ' + tag));
     assert.match(sw.cached('/de')!, new RegExp('Start ' + tag));
+    sw.tabs([tag + '-later']);
+    await sw.post(['/', '/de', '/de/tools/json-graph'], tag + '-later');
     assert.deepEqual(sw.statics(), filesOf(tag, site(tag)).filter((p) => !p.includes('-diff')), `after deploy ${tag}`);
     assert.equal(sw.record(), null);
   }
@@ -456,9 +466,12 @@ test("service worker: an old tab keeps its build's files until it closes, after 
   sw.offline();
   assert.deepEqual(await loadsAll(sw, 'a-tab', a), []);
   sw.offline(false);
-  // Closed, its build goes, though the tab of build b stays open.
+  // Closed, and the tab open at the deploy too: its build goes, at a later tab's report.
   sw.tabs(['b-tab']);
   await sw.post(['/tools/json-graph'], 'b-tab');
+  assert.ok(sw.has('/_next/static/chunks/a-tool.js'), 'kept while a tab open at the deploy is');
+  sw.tabs(['c-tab']);
+  await sw.post(['/tools/json-graph'], 'c-tab');
   assert.deepEqual(sw.statics(), filesOf('b', site('b')).filter((p) => !p.includes('-diff')));
 });
 
@@ -714,36 +727,43 @@ test('service worker: upgrading from the frozen production worker keeps its tabs
   const sw = worker(undefined, env);
   await sw.install();
   await sw.activate();
-  assert.match(sw.cached('/')!, /Home b/);
+  // Installing beside it cached build b's files; '/' moves at the next visit to it.
+  assert.match(sw.cached('/')!, /Home a/);
+  assert.ok(['main', 'page', 'app'].every((f) => sw.has(`/_next/static/chunks/b-${f}.${f === 'app' ? 'css' : 'js'}`)));
   sw.offline();
   assert.deepEqual(await loadsAll(sw, 'old', had), []);
   sw.offline(false);
+  // (That visit got build a's shell, and runs build a: its files stay while it is open too.)
   await sw.visit('/', 'n');
+  assert.match(sw.cached('/')!, /Home b/);
   sw.tabs(['old', 'n']);
   await sw.post(['/'], 'n');
   sw.tabs(['n']);
   await sw.post(['/'], 'n');
+  assert.ok(sw.has('/_next/static/chunks/a-main.js'));
+  sw.tabs(['m']);
+  await sw.post(['/'], 'm');
   assert.deepEqual(sw.statics(), filesOf('b'));
 });
 
-test("service worker: the previous worker's record is honoured, and the record written stays readable by it", async () => {
+test("service worker: the previous worker's record is honoured, then dropped: it never reads this one's (review 2, finding 5)", async () => {
   const sw = worker();
   sw.serve(build('a'));
   await sw.install();
   // The previous worker retired a file at its last deploy, for a tab still open.
   const old = ORIGIN + '/_next/static/chunks/z-old.js';
   sw.env.store.set(old, { body: 'old()', type: 'text/javascript' });
-  sw.env.store.set(RETIRED, { body: JSON.stringify({ urls: [old], clients: ['older'], at: sw.env.now }), type: 'application/json' });
+  sw.env.store.set(LEGACY, { body: JSON.stringify({ urls: [old], clients: ['older'], at: sw.env.now }), type: 'application/json' });
   sw.tabs(['older']);
   await sw.post(['/'], 'older');
   assert.ok(sw.has('/_next/static/chunks/z-old.js'));
+  // Taken in as a generation of this worker's own record, and dropped.
+  assert.ok(!sw.has('/sw.js?retired'));
+  assert.deepEqual(sw.record(), [{ urls: [old], clients: ['older'], at: sw.env.now }]);
   sw.serve(build('b'));
   await sw.visit('/', 'v');
-  // (One list too, as the previous worker reads it, should it run again.)
-  const rec = sw.record();
-  assert.ok(rec.urls.includes(old) && rec.urls.includes(ORIGIN + '/_next/static/chunks/a-main.js'));
-  assert.deepEqual(rec.clients.sort(), ['older', 'v']);
-  assert.equal(typeof rec.at, 'number');
+  assert.ok(!sw.has('/sw.js?retired'), 'never written again');
+  assert.ok(sw.record().some((g: { urls: string[] }) => g.urls.includes(ORIGIN + '/_next/static/chunks/a-main.js')));
   sw.tabs(['older', 'v']);
   await sw.post(['/'], 'v');
   sw.tabs(['n']);
@@ -1033,9 +1053,9 @@ test('service worker: a home that failed to follow a tool page to its new build 
   sw.tabs(['b2']);
   await sw.visit('/tools/json-graph', 'b2');
   assert.match(sw.cached('/')!, /Home b/);
-  assert.ok(!sw.has('/sw.js?homes'), 'nothing left to try');
-  // And build a's files go once its tabs are.
-  await sw.post(['/', '/tools/json-graph'], 'b2');
+  // And build a's files go once the tabs open at the deploys are closed.
+  sw.tabs(['b3']);
+  await sw.post(['/', '/tools/json-graph'], 'b3');
   assert.ok(!sw.statics().some((p) => p.includes('/a-')), sw.statics().join(' '));
 });
 
@@ -1078,7 +1098,9 @@ test("service worker: installing deletes nothing, so a page the worker before it
   main.tabs([]);
   const sw = worker(undefined, env);
   await sw.install();
-  assert.match(sw.cached('/')!, /Home b/);
+  // (Beside main's, the install caches build b's files only: '/' stays.)
+  assert.match(sw.cached('/')!, /Home a/);
+  assert.ok(sw.has('/_next/static/chunks/b-main.js'));
   // Main's worker gets its stylesheet and stores the page; then this one takes over and a tab reports in.
   release();
   await nav.done;
@@ -1162,4 +1184,234 @@ test("service worker: a file a cached page needs through a chunk not cached yet 
   assert.ok(!sw.has('/_next/static/chunks/a-lazy.js') && !sw.has('/_next/static/chunks/b-main.js'), 'what nothing needs went');
   sw.offline();
   assert.deepEqual(await loadsAll(sw, 'tC', ['/_next/static/chunks/c-main.js', '/_next/static/chunks/c-lazy.js', '/_next/static/chunks/shared.js']), []);
+});
+
+// ── Review round 2 (PR #40) ──────────────────────────────────────────────────────────────────────────
+
+const MAIN_SW = () => readFileSync(join(process.cwd(), 'harness/suites/platform/fixtures/main-sw.js'), 'utf8');
+
+test("service worker: installing beside main's worker changes no page and writes no record, so main's clean-up never deletes what it is storing (review 2, finding 1)", async () => {
+  const env = world();
+  const main = worker(MAIN_SW(), env);
+  main.serve(site('a'));
+  await main.install();
+  await main.activate();
+  main.tabs(['t']);
+  await main.post(['/'], 't');
+  const release = main.hold('/_next/static/chunks/a-diff.css');
+  const nav = main.open('/tools/json-diff', 't');
+  await nav.text;
+  main.serve({ ...site('a'), ...site('b') });
+  const sw = worker(undefined, env);
+  await sw.install();
+  assert.ok(!sw.has('/sw.js?retired') && !sw.has('/sw.js?generations'), 'no record');
+  // A report main's worker handles meanwhile (another tab), before it stores the diff page.
+  main.tabs(['x']);
+  await main.post(['/'], 'x');
+  release();
+  await nav.done;
+  await sw.activate();
+  sw.offline();
+  assert.match((await sw.visit('/tools/json-diff', 'off'))!, /Diff a/);
+  const named = ['app.css', 'main.js', 'page.js', 'diff.css', 'diff.js'].map((f) => '/_next/static/chunks/a-' + f);
+  assert.deepEqual(await loadsAll(sw, 'off', named), []);
+});
+
+test('service worker: a worker that starts installing during a clean-up\'s scan stops its deletions (review 2, finding 1)', async () => {
+  const sw = worker();
+  sw.serve(build('a'));
+  await sw.install();
+  sw.tabs(['old']);
+  await sw.post(['/'], 'old');
+  sw.serve(build('b'));
+  await sw.visit('/', 'v');
+  sw.tabs(['old', 'v']);
+  await sw.post(['/'], 'v');
+  // The old tabs close; while the next clean-up reads the cache, another worker starts installing.
+  sw.tabs(['n']);
+  sw.env.onKeys = () => void (sw.env.installing = 99);
+  await sw.post(['/'], 'n');
+  sw.env.onKeys = null;
+  for (const f of filesOf('a')) assert.ok(sw.has(f), f);
+  // Once it is the only one again, they go.
+  sw.env.installing = 0;
+  await sw.post(['/'], 'n');
+  assert.ok(!sw.statics().some((p) => p.includes('/a-')));
+});
+
+test("service worker: a chunk the new build's tab reaches through a route, also named by the old home, stays while that tab is open (review 2, finding 2)", async () => {
+  // l.js: in build a's home (its main chunk names it), not in build b's pages, but in build b's diff route.
+  const a = { ...site('a'), '/_next/static/chunks/a-main.js': 'x.l("static/chunks/a-graph.js");x.l("static/chunks/l.js")', '/_next/static/chunks/l.js': 'l()' };
+  const b = { ...site('b'), '/_next/static/chunks/b-diff.js': 'x.l("static/chunks/l.js")', '/_next/static/chunks/l.js': 'l()' };
+  const sw = worker();
+  sw.serve(a);
+  await sw.install();
+  sw.tabs(['tA']);
+  await sw.visit('/tools/json-graph', 'tA');
+  await sw.post(['/', '/tools/json-graph'], 'tA');
+  assert.ok(sw.has('/_next/static/chunks/l.js'));
+  // Build b: the only tab gets the tool page from the network, and '/' follows; it reaches the diff route.
+  sw.serve(b);
+  sw.tabs(['T']);
+  await sw.visit('/tools/json-graph', 'T');
+  assert.match(sw.cached('/')!, /Home b/);
+  assert.equal(await sw.load('/_next/static/chunks/b-diff.js', 'T'), 'x.l("static/chunks/l.js")');
+  // Another tab reports in (every cached page's files known), then the network goes.
+  sw.tabs(['T', 'U']);
+  await sw.post(['/'], 'U');
+  sw.offline();
+  assert.equal(await sw.load('/_next/static/chunks/l.js', 'T'), 'l()');
+});
+
+/** Build a cached and its tab closed; build b's '/' in, its old tabs closed too: build a's files wait for a clean-up. */
+async function deployed(sw: ReturnType<typeof worker>, b: Files) {
+  sw.serve(build('a'));
+  await sw.install();
+  sw.tabs(['old']);
+  await sw.post(['/'], 'old');
+  sw.serve(b);
+  await sw.visit('/', 'v');
+  sw.tabs(['n']);
+  sw.advance(61_000); // (v is no longer being opened)
+}
+
+test('service worker: a lazy script that failed once is fetched again on a later report, and the clean-up goes on (review 2, finding 3)', async () => {
+  const sw = worker();
+  // Build b's lazy graph chunk answers 503 at first: '/' isn't known in full, so build a's files wait.
+  await deployed(sw, { ...build('b'), '/_next/static/chunks/b-graph.js': 503 });
+  await sw.post(['/'], 'n');
+  assert.ok(sw.has('/_next/static/chunks/a-main.js'), 'waits');
+  // The server recovers: the next report fetches it, and the clean-up runs.
+  sw.serve(build('b'));
+  await sw.post(['/'], 'n');
+  assert.ok(sw.has('/_next/static/chunks/b-graph.js'));
+  assert.ok(!sw.statics().some((p) => p.includes('/a-')), sw.statics().join(' '));
+});
+
+test('service worker: a page whose files stay unknown holds a clean-up for RETIRE_MS at most (review 2, finding 3)', async () => {
+  const sw = worker();
+  await deployed(sw, { ...build('b'), '/_next/static/chunks/b-graph.js': 503 });
+  await sw.post(['/'], 'n');
+  sw.advance(6 * 24 * 3600 * 1000);
+  await sw.post(['/'], 'n');
+  assert.ok(sw.has('/_next/static/chunks/a-main.js'), 'still within the week');
+  sw.advance(2 * 24 * 3600 * 1000);
+  await sw.post(['/'], 'n');
+  assert.ok(!sw.statics().some((p) => p.includes('/a-')), sw.statics().join(' '));
+  assert.match(sw.cached('/')!, /Home b/, 'the page stays');
+});
+
+test("service worker: a lazy chunk's 404 during a deploy isn't taken for a name that is no file (review 2, finding 4)", async () => {
+  const tiny = (tag: string, lazy: string): Files => ({
+    '/': `<!doctype html><title>Home ${tag}</title><script src="/_next/static/chunks/${tag}-main.js"></script>`,
+    [`/_next/static/chunks/${tag}-main.js`]: `x.l("static/chunks/${tag}-lazy.js")`,
+    [`/_next/static/chunks/${tag}-lazy.js`]: lazy,
+    '/_next/static/chunks/shared.js': 'shared()',
+  });
+  const uses = 's.l("static/chunks/shared.js")';
+  const sw = worker();
+  sw.serve(tiny('a', uses));
+  await sw.install();
+  sw.tabs(['tA']);
+  await sw.post(['/'], 'tA');
+  sw.serve(tiny('c', uses));
+  await sw.visit('/', 'v');
+  // Build a's tabs close; build c's report comes while its lazy chunk answers 404 (not all of the deploy is out yet).
+  sw.tabs(['tC']);
+  sw.advance(61_000);
+  sw.serve({ ...tiny('c', uses), '/_next/static/chunks/c-lazy.js': 404 });
+  await sw.post(['/'], 'tC');
+  assert.ok(sw.has('/_next/static/chunks/shared.js'), 'kept: what c-lazy.js names is unknown');
+  // It is out now; shared.js can't come from the server any more. The next report completes build c, from the cache.
+  sw.serve({ ...tiny('c', uses), '/_next/static/chunks/shared.js': 404 });
+  await sw.post(['/'], 'tC');
+  sw.offline();
+  assert.deepEqual(await loadsAll(sw, 'tC', ['/_next/static/chunks/c-main.js', '/_next/static/chunks/c-lazy.js', '/_next/static/chunks/shared.js']), []);
+});
+
+test("service worker: main's worker brought back neither reads nor drops this one's record (review 2, finding 5)", async () => {
+  const env = world();
+  const sw = worker(undefined, env);
+  sw.serve(build('a'));
+  await sw.install();
+  sw.tabs(['old']);
+  await sw.post(['/'], 'old');
+  // Build b comes in while a tab opens '/' from build a's shell, without an id (UNSEEN guards build a for it).
+  sw.serve(build('b'));
+  await sw.visit('/', '');
+  sw.tabs(['anon']);
+  const record = JSON.stringify(sw.record());
+  assert.notEqual(record, 'null');
+  // Main's worker comes back with the same build ('/' stays): its clean-ups find no record of its own.
+  const main = worker(MAIN_SW(), env);
+  await main.install();
+  await main.activate();
+  await main.post(['/'], 'anon');
+  assert.equal(JSON.stringify(sw.record()), record, 'untouched');
+  for (const f of filesOf('a')) assert.ok(sw.has(f), f);
+  // This one again: the tab takes UNSEEN's place a minute on; once it closes, build a's files go.
+  const back = worker(undefined, env);
+  await back.install();
+  await back.activate();
+  back.advance(61_000);
+  await back.post(['/'], 'anon');
+  for (const f of filesOf('a')) assert.ok(back.has(f), f);
+  back.tabs(['n']);
+  await back.post(['/'], 'n');
+  assert.ok(!back.statics().some((p) => p.includes('/a-')), back.statics().join(' '));
+});
+
+test('service worker: a home left behind by a worker stopped mid-way follows on the next page from the network (review 2, finding 6)', async () => {
+  const env = world();
+  const sw = worker(undefined, env);
+  sw.serve(site('a'));
+  await sw.install();
+  sw.tabs(['a1']);
+  await sw.visit('/tools/json-graph', 'a1');
+  await sw.post(['/', '/tools/json-graph'], 'a1');
+  // Build b: the tool page from the network goes in; '/' is being fetched when the worker is stopped.
+  sw.serve(site('b'));
+  sw.hold('/');
+  sw.tabs(['b1']);
+  const nav = sw.open('/tools/json-graph', 'b1');
+  await nav.text;
+  await settle();
+  assert.match(sw.cached('/tools/json-graph')!, /Graph b/);
+  // The next worker (the same one started again: nothing in memory) gets the same build's tool page.
+  const again = worker(undefined, env);
+  await again.activate();
+  await again.visit('/tools/json-graph', 'b2');
+  assert.match(again.cached('/')!, /Home b/);
+});
+
+test("service worker: a visit to '/' brings a language home left behind along (review 2, finding 7)", async () => {
+  const sw = worker();
+  sw.serve(site('a'));
+  await sw.install();
+  sw.tabs(['a1']);
+  await sw.visit('/de/tools/json-graph', 'a1');
+  await sw.post(['/', '/de', '/de/tools/json-graph'], 'a1');
+  // Build b, from the German tool page while '/de' answers 503: '/' follows, '/de' doesn't.
+  sw.serve({ ...site('b'), '/de': 503 });
+  sw.tabs(['b1']);
+  await sw.visit('/de/tools/json-graph', 'b1');
+  assert.match(sw.cached('/')!, /Home b/);
+  assert.match(sw.cached('/de')!, /Start a/);
+  // Then only '/' is visited.
+  sw.serve(site('b'));
+  await sw.visit('/', 'b2');
+  assert.match(sw.cached('/de')!, /Start b/);
+});
+
+test("service worker: a page's early report (files only, before its warm-up) starts no lazy downloads (review 2, finding 8)", async () => {
+  const sw = worker();
+  sw.serve(build('a'));
+  await sw.install();
+  sw.fetched.length = 0;
+  // Links' code goes first, on its own: what it names is cached, nothing else.
+  await sw.post(['/_next/static/chunks/a-main.js']);
+  assert.deepEqual(sw.fetched, []);
+  // The warm-up's report (it names the page) follows the page's lazy chunks.
+  await sw.post(['/', '/_next/static/chunks/a-main.js']);
+  assert.ok(sw.fetched.includes('/_next/static/chunks/a-graph.js'));
 });

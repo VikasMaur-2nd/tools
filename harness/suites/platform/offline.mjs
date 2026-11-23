@@ -471,15 +471,17 @@ test('toolpage: a deploy seen on a tool page brings the shell along, keeps the o
     const lost = await unreachable(oldTab, oldFiles);
     t.check(!lost.length, 'toolpage offline: the old tab still gets every file of its build', `${lost.length} missing ${lost.slice(0, 3).join(' ')}`);
 
-    // The old tab closes while the new build's tab stays open: build A's leftovers go at the next visit.
+    // The tabs open at the deploy close (the visitor's too: it may reach a route sharing a chunk with build A):
+    // build A's leftovers go at the next visit.
     await Promise.all([quiet(oldTab), quiet(visitor)]);
     await oldTab.close();
+    await visitor.close();
     proxy.offline(false);
     const later = await t.context.newPage();
     await later.goto(proxy.origin + TOOL, { waitUntil: 'load' });
     await swIdle(later, { posted: true });
     const left = (await cacheKeys(later)).filter((p) => onlyA.includes(p));
-    t.check(!left.length, "toolpage: once the old tab is closed, the old build's files are deleted (a new build's tab still open)", `${left.length} left of ${onlyA.length}: ${left.slice(0, 3).join(' ')}`);
+    t.check(!left.length, "toolpage: once the tabs open at the deploy are closed, the old build's files are deleted", `${left.length} left of ${onlyA.length}: ${left.slice(0, 3).join(' ')}`);
     const missing = await missingFromCache(later, a2Tool.all);
     t.check(!missing.length, "toolpage: every file of the new build's tool page is cached", missing.slice(0, 3));
     proxy.offline();
