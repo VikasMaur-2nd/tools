@@ -34,6 +34,10 @@ export interface T {
    * on first use; never rejects: a failed load leaves them English). English pages have none to add.
    */
   huge?(): Promise<void>;
+  /** Localized pages: adds a lazily loaded feature's strings (as `huge`: never rejects). English pages have none. */
+  lazy?(feature: 'schema' | 'flatten'): Promise<void>;
+  /** Whether that feature's strings are in. */
+  has?(feature: 'schema' | 'flatten'): boolean;
 }
 
 export const fill = (s: string, p?: Params) => (p ? s.replace(/\{(\w+)\}/g, (m, k: string) => (p[k] === undefined ? m : String(p[k]))) : s);

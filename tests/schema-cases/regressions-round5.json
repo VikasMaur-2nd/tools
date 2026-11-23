@@ -1,0 +1,151 @@
+{
+    "description": "Tool Kumar's own cases in the JSON-Schema-Test-Suite format: review round 5 (an undecided if: branches the same decide as one; different ones leave it unknown, never applied twice). \"complete\" (Tool Kumar's): whether the check is complete, false for not fully checked.",
+    "tests": [
+        {
+            "description": "an undecided if with then and else both false fails for sure (round 5, finding 6)",
+            "compatibility": "7",
+            "schema": {
+                "if": {
+                    "not": {
+                        "$ref": "https://example.test/missing"
+                    }
+                },
+                "then": false,
+                "else": false
+            },
+            "tests": [
+                {
+                    "description": "any value",
+                    "data": 1,
+                    "valid": false,
+                    "complete": true
+                }
+            ]
+        },
+        {
+            "description": "an undecided if with the same branch both ways: that branch decides (round 5, finding 6)",
+            "compatibility": "7",
+            "schema": {
+                "if": {
+                    "not": {
+                        "$ref": "https://example.test/missing"
+                    }
+                },
+                "then": {
+                    "type": "number"
+                },
+                "else": {
+                    "type": "number"
+                }
+            },
+            "tests": [
+                {
+                    "description": "a number",
+                    "data": 1,
+                    "valid": true,
+                    "complete": true
+                },
+                {
+                    "description": "a string",
+                    "data": "a",
+                    "valid": false,
+                    "complete": true
+                }
+            ]
+        },
+        {
+            "description": "the same branch both ways that evaluates a: a is evaluated for sure (round 5, finding 6)",
+            "compatibility": "2019",
+            "schema": {
+                "if": {
+                    "not": {
+                        "$ref": "https://example.test/missing"
+                    }
+                },
+                "then": {
+                    "properties": {
+                        "a": true
+                    }
+                },
+                "else": {
+                    "properties": {
+                        "a": true
+                    }
+                },
+                "unevaluatedProperties": false
+            },
+            "tests": [
+                {
+                    "description": "a alone",
+                    "data": {
+                        "a": 1
+                    },
+                    "valid": true,
+                    "complete": true
+                },
+                {
+                    "description": "b: unevaluated for sure",
+                    "data": {
+                        "a": 1,
+                        "b": 1
+                    },
+                    "valid": false,
+                    "complete": true
+                }
+            ]
+        },
+        {
+            "description": "different branches of an undecided if: which applies isn't known, neither is applied (round 5, finding 4)",
+            "compatibility": "7",
+            "schema": {
+                "if": {
+                    "not": {
+                        "$ref": "https://example.test/missing"
+                    }
+                },
+                "then": {
+                    "type": "number"
+                },
+                "else": {
+                    "minimum": 0
+                }
+            },
+            "tests": [
+                {
+                    "description": "1 passes both, but they aren't applied",
+                    "data": 1,
+                    "valid": false,
+                    "complete": false
+                }
+            ]
+        },
+        {
+            "description": "a single branch of an undecided if decides when it passes for sure (round 5, finding 4)",
+            "compatibility": "7",
+            "schema": {
+                "if": {
+                    "not": {
+                        "$ref": "https://example.test/missing"
+                    }
+                },
+                "then": {
+                    "type": "number"
+                }
+            },
+            "tests": [
+                {
+                    "description": "a number: passes either way",
+                    "data": 1,
+                    "valid": true,
+                    "complete": true
+                },
+                {
+                    "description": "a string: then may apply",
+                    "data": "a",
+                    "valid": false,
+                    "complete": false
+                }
+            ]
+        }
+    ]
+}

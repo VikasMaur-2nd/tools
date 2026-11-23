@@ -16,8 +16,8 @@ import { execFileSync } from 'node:child_process';
 import { appendFileSync } from 'node:fs';
 import { parseArgs } from 'node:util';
 
-/** Billed minutes a month: 1,000, except where a month was raised (the user allowed 2,000 for October 2026 and 1,500 for November 2026). */
-const RAISED = { '2026-10': 2000, '2026-11': 1500 };
+/** Billed minutes a month: 1,000, except where a month was raised (the user allowed 2,000 for October 2026 and 2,500 for November 2026). */
+const RAISED = { '2026-10': 2000, '2026-11': 2500 };
 const BUDGET = RAISED[new Date().toISOString().slice(0, 7)] ?? 1000;
 const ENGINES = ['chromium', 'firefox', 'webkit'];
 const LEVELS = ['unit', 'quick', 'smoke', 'e2e', 'full', 'perf'];

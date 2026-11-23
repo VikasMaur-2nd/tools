@@ -246,6 +246,17 @@ describe('convert_json', () => {
     assert.match((await run('convert_json', page, { to: 'yaml' })).text, /- id: 1\n {2}name: Ada/);
   });
 
+  test('flatten and unflatten, with the page\'s options, and unflatten\'s conflicts as errors', async () => {
+    const { page } = fakePage('{"user":{"name":"Ada","tags":["x"]}}');
+    assert.equal((await run('convert_json', page, { to: 'flatten' })).text, '{\n  "user.name": "Ada",\n  "user.tags[0]": "x"\n}');
+    const slash = fakePage('{"user/name":"Ada","user/tags":["x"]}');
+    slash.page.settings().flat = { sep: '/', arrays: 'keep', escape: true, depth: 0 };
+    assert.equal((await run('convert_json', slash.page, { to: 'unflatten' })).text, '{\n  "user": {\n    "name": "Ada",\n    "tags": [\n      "x"\n    ]\n  }\n}');
+    const clash = await run('convert_json', fakePage('{"a":1,"a.b":2}').page, { to: 'unflatten' });
+    assert.equal(clash.ok, false);
+    assert.equal(clash.text, 'Keys "a" and "a.b" conflict: one holds a value, the other goes inside it.');
+  });
+
   test('unknown targets and broken documents are explained', async () => {
     const { page } = fakePage(doc);
     assert.match((await run('convert_json', page, { to: 'xlsx' })).text, /^Error: to must be one of "typescript", "zod"/);
@@ -340,6 +351,24 @@ describe('download_file', () => {
     await run('download_file', f.page, { what: 'formatted', name: 'pretty.json' });
     assert.equal(f.calls[1], 'save pretty.json download_output');
     assert.equal(await body(f.files[1]), formatDoc(doc, parse(doc), '  '));
+  });
+
+  test('flatten and unflatten of JSON Lines: JSON Lines, in a .jsonl file, as the page makes it', async () => {
+    // (The agent's flatten of JSON Lines was one array, in a .flat.json file.)
+    const f = fakePage('{"a":{"b":1}}\n{"a":{"b":2}}\n', 'events.jsonl');
+    await run('download_file', f.page, { what: 'converted', to: 'flatten' });
+    await run('download_file', f.page, { what: 'converted', to: 'flatten', name: 'mine.flat.jsonl' });
+    assert.deepEqual(f.calls.filter((c) => c.startsWith('save')), ['save events.flat.jsonl download_convert', 'save mine.flat.jsonl download_convert']);
+    assert.equal(await body(f.files[0]), '{"a.b":1}\n{"a.b":2}\n');
+    assert.equal(f.files[0].file.type, 'application/x-ndjson');
+    assert.equal((await run('convert_json', f.page, { to: 'flatten' })).text, '{"a.b":1}\n{"a.b":2}\n');
+    const g = fakePage('{"a.b":1}\n{"a.b":2}\n', 'flat.ndjson');
+    await run('download_file', g.page, { what: 'converted', to: 'unflatten' });
+    assert.deepEqual([g.files[0].name, await body(g.files[0]), g.files[0].file.type], ['flat.nested.jsonl', '{"a":{"b":1}}\n{"a":{"b":2}}\n', 'application/x-ndjson']);
+    // One document: JSON, as before.
+    const h = fakePage('{"a":{"b":1}}', 'one.json');
+    await run('download_file', h.page, { what: 'converted', to: 'flatten' });
+    assert.deepEqual([h.files[0].name, h.files[0].file.type], ['one.flat.json', 'application/json']);
   });
 
   test('converted code: the target asked for (shown in the page too), named as the page names it', async () => {

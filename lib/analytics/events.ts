@@ -19,7 +19,7 @@ export type FileKind = (typeof FILE_KIND_LIST)[number];
 const VALIDITIES = ['valid', 'fixable', 'invalid', 'unknown'] as const;
 type Validity = (typeof VALIDITIES)[number];
 /** `shape`: huge-file mode's Shape panel. */
-const VIEW_IDS = ['format', 'tree', 'table', 'graph', 'convert', 'compare', 'shape'] as const;
+const VIEW_IDS = ['format', 'tree', 'table', 'graph', 'convert', 'compare', 'shape', 'schema'] as const;
 export type ViewId = (typeof VIEW_IDS)[number];
 /** What the input is read as (lib/engine/source.ts). */
 const INPUT_FORMATS = ['json', 'yaml', 'csv', 'xml', 'toml'] as const;
@@ -67,6 +67,7 @@ const FEATURES = [
   'compare_swap', 'compare_format', 'compare_close',
   'wrap', 'auto_format', 'theme', 'shortcuts', 'palette', 'load_url_dialog', 'context_menu',
   'shape_go', 'shape_next', 'shape_count',
+  'schema_validate', 'schema_generate', 'schema_formats',
 ] as const;
 export type Feature = (typeof FEATURES)[number];
 
@@ -95,7 +96,7 @@ export interface Events {
   /** `target`: the Convert language active when the Convert view opens. */
   view_opened: { view: ViewId; via: Via; target?: string };
   convert_target_selected: { target: string; group: 'types' | 'data'; via: Via };
-  convert_option_changed: { option: 'ts_style' | 'csharp_lib'; value: string };
+  convert_option_changed: { option: 'ts_style' | 'csharp_lib' | 'flat_sep' | 'flat_arrays' | 'flat_escape' | 'flat_depth'; value: string };
   format_option_changed: { option: 'style' | 'sort_keys' | 'indent'; value: string };
   feature_used: { feature: Feature; via: Via; view?: ViewId; level?: number; on?: boolean; value?: string; jsonpath?: boolean };
   command_run: { command: string };
@@ -151,6 +152,11 @@ export interface Events {
     size: (typeof HUGE_SIZE_LIST)[number];
     ms: number;
   };
+  /**
+   * The Schema view fetched the remote schemas a schema refers to, the visitor having asked: how many were asked
+   * for, fetched and failed, as ranges (countBucket). Never the URLs, hosts or schemas.
+   */
+  schema_refs_fetched: { requested: string; fetched: string; failed: string };
 }
 
 export type EventName = keyof Events;
@@ -250,7 +256,7 @@ export function errorKind(msg: string | undefined): string | undefined {
 // ── What each property may hold ──────────────────────────────────────────────
 
 /** Convert targets (lib/engine/targets.ts) and the palette's commands (lib/engine/commands.ts): tests/analytics.test.ts checks every one passes. */
-const TARGET_IDS = ['typescript', 'zod', 'json-schema', 'csharp', 'dart', 'java', 'python', 'go', 'kotlin', 'swift', 'php', 'rust', 'protobuf', 'csv', 'xlsx', 'yaml', 'xml', 'toml', 'jsonl'];
+const TARGET_IDS = ['typescript', 'zod', 'json-schema', 'csharp', 'dart', 'java', 'python', 'go', 'kotlin', 'swift', 'php', 'rust', 'protobuf', 'csv', 'xlsx', 'yaml', 'xml', 'toml', 'jsonl', 'flatten', 'unflatten'];
 const COMMAND_IDS = [
   'undo', 'redo', 'use-output', 'format', 'minify', 'sort', 'out-pretty', 'out-minify', 'out-string', 'out-sort', 'copy-output', 'download-output',
   'repair', 'escape', 'unescape', 'error', 'jwt', 'from-yaml', 'from-xml', 'from-csv', 'from-toml', 'from-json', 'copy', 'download', 'open', 'paste', 'url',
@@ -258,7 +264,9 @@ const COMMAND_IDS = [
   'graph-export', 'graph-copy', 'graph-png', 'graph-svg', 'convert', 'compare', 'excel', 'copy-convert', 'download-convert', 'search', 'expand',
   'collapse', 'level1', 'level2', 'level3', 'fold-input', 'unfold-input', 'close-compare', 'focus-tree', 'focus-editor', 'nested', 'copy-value',
   'copy-path', 'csv', 'csv-download', 'indent-2', 'indent-4', 'indent-tab', 'theme-system', 'theme-light', 'theme-dark', 'autoformat', 'wrap',
-  'privacy-mode', 'integrate', 'handoff', 'shortcuts', 'shape', 'huge-undo', 'huge-redo', 'huge-save', 'huge-save-as', 'huge-edit', 'huge-text', 'huge-rename', 'huge-insert', 'huge-insert-inside', 'huge-duplicate', 'huge-delete', ...TARGET_IDS.map((t) => `to-${t}`),
+  'privacy-mode', 'integrate', 'handoff', 'shortcuts', 'shape',
+  'schema', 'schema-generate', 'close-schema',
+  'huge-undo', 'huge-redo', 'huge-save', 'huge-save-as', 'huge-edit', 'huge-text', 'huge-rename', 'huge-insert', 'huge-insert-inside', 'huge-duplicate', 'huge-delete', ...TARGET_IDS.map((t) => `to-${t}`),
 ];
 const SIZES = [...SIZE_EDGES.map(([, label]) => label), '100MB+'];
 const ERROR_KIND_LIST = [...ERROR_KINDS.map(([, kind]) => kind), 'other'];
@@ -275,7 +283,8 @@ const RULES: { [K in EventName]: { readonly [P in keyof Events[K]]-?: Rule } } =
   },
   view_opened: { view: VIEW_IDS, via: VIAS, target: TARGET_IDS },
   convert_target_selected: { target: TARGET_IDS, group: ['types', 'data'], via: VIAS },
-  convert_option_changed: { option: ['ts_style', 'csharp_lib'], value: ['interface', 'type', 'stj', 'newtonsoft'] },
+  // Flatten: the separator only when picked from the menu's ('.', '/', '_', '__'; a typed one is never sent), array style, escapes, depth.
+  convert_option_changed: { option: ['ts_style', 'csharp_lib', 'flat_sep', 'flat_arrays', 'flat_escape', 'flat_depth'], value: ['interface', 'type', 'stj', 'newtonsoft', '.', '/', '_', '__', 'bracket', 'dot', 'keep', 'true', 'false', '0', '1', '2', '3'] },
   format_option_changed: { option: ['style', 'sort_keys', 'indent'], value: ['pretty', 'minify', 'string', 'true', 'false', '2', '4', 'tab'] },
   feature_used: {
     feature: FEATURES, via: VIAS, view: VIEW_IDS, level: 'number', on: 'flag', jsonpath: 'flag',
@@ -290,6 +299,7 @@ const RULES: { [K in EventName]: { readonly [P in keyof Events[K]]-?: Rule } } =
   huge_gz: { outcome: HUGE_GZ_OUTCOMES, size: HUGE_SIZE_LIST, ms: 'number' },
   huge_edit: { op: HUGE_EDIT_OPS, from: HUGE_EDIT_FROM },
   huge_save: { how: HUGE_SAVE_HOW, outcome: HUGE_SAVE_OUTCOMES, size: HUGE_SIZE_LIST, ms: 'number' },
+  schema_refs_fetched: { requested: COUNTS, fetched: COUNTS, failed: COUNTS },
 };
 
 /** Allowed properties per event (see `clean`). */

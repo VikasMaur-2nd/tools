@@ -182,6 +182,75 @@ test('fresh: after one visit, the shell, visited pages and lazy features work of
   }
 });
 
+/**
+ * Lets the page's first 'cache' post through (links' code, posted as soon as the worker is ready) and drops the
+ * warm-up's (the one naming the page itself, after every feature has loaded): a visit that went offline before it.
+ */
+const EARLY_POSTS_ONLY = () => {
+  if (typeof ServiceWorker === 'undefined') return;
+  const post = ServiceWorker.prototype.postMessage;
+  ServiceWorker.prototype.postMessage = function (msg, ...rest) {
+    if (msg && msg.type === 'cache') {
+      if (msg.urls.includes(location.origin + '/')) return (window.__swDropped = (window.__swDropped || 0) + 1);
+      window.__swPosted = (window.__swPosted || 0) + 1;
+    }
+    return post.call(this, msg, ...rest);
+  };
+};
+
+test('link: offline before the warm-up has cached the features, a share link still opens', async (t) => {
+  // (lib/link.ts loads when a link is opened; it came with the warm-up's pass, so a cached shell offline before
+  // that left the link in the address bar and the old document on screen, saying nothing.)
+  const proxy = await startProxy({ A: t.base });
+  try {
+    await t.context.addInitScript(EARLY_POSTS_ONLY);
+    await t.page.goto(proxy.origin + '/', { waitUntil: 'load' });
+    await swIdle(t.page, { posted: true, timeout: 90_000 });
+    proxy.offline();
+    const { deflateRawSync } = await import('node:zlib');
+    const doc = '{"shared":"offline","n":9007199254740993}';
+    const p2 = await t.context.newPage();
+    const home = await opened(p2, proxy.origin, '/#a=' + deflateRawSync(doc).toString('base64url'));
+    t.check(home.ok && home.tool === 1, 'link offline: the cached shell opens', home);
+    const shown = await p2.waitForFunction(() => /"shared": "offline"/.test(document.getElementById('input')?.value ?? ''), null, { ...POLL, timeout: t.budget(15_000) }).then(() => true, () => false);
+    const toast = await p2.evaluate(() => window.__vis('.toast')?.textContent ?? '');
+    t.check(shown && !/Couldn.t open the link/.test(toast), 'link offline: the linked document opens', toast);
+    t.check(await p2.evaluate(() => location.hash) === '', 'link offline: the link leaves the address bar');
+    await checkErrors(t, 'link');
+  } finally {
+    proxy.close();
+  }
+});
+
+test('localized: after one visit, the Schema view and Flatten show their own strings offline', async (t) => {
+  const proxy = await startProxy({ A: t.base });
+  try {
+    await t.context.addInitScript(WATCH_POSTS);
+    const page = t.page;
+    // A first visit to a German tool page (its Schema view opens with the sample); Flatten is never opened.
+    await page.goto(proxy.origin + '/de/tools/json-schema-validator', { waitUntil: 'load' });
+    await swIdle(page, { posted: true, timeout: 90_000 });
+    const dicts = (await cacheKeys(page)).filter((k) => k.startsWith('/i18n/'));
+    t.check(dicts.length === 3 && dicts.every((k) => /^\/i18n\/(huge|schema|flatten)-strings\.de\.[0-9a-f]{12}\.json$/.test(k)), 'localized: the page\'s own three dictionaries are cached, no other language\'s', dicts);
+
+    proxy.offline();
+    const p2 = await t.context.newPage();
+    const de = await opened(p2, proxy.origin, '/de/tools/json-schema-validator');
+    t.check(de.ok && de.lang === 'de' && de.tool === 1, 'localized offline: the visited page opens', de);
+    // (The result, not "Validierung" while it runs.)
+    const head = await p2.waitForFunction(() => /Fehler/.test(window.__vis('#view-schema .sch-state')?.textContent ?? '') && window.__vis('#view-schema .sch-state').textContent, null, { ...POLL, timeout: t.budget(20_000) }).then((h) => h.jsonValue(), () => p2.evaluate(() => window.__vis('#view-schema .sch-state')?.textContent ?? ''));
+    t.check(/^6 Fehler/.test(head), 'localized offline: the Schema view in German', head);
+    await t.app.view(p2, 'convert');
+    await p2.locator('.app:visible .vmain select').selectOption('unflatten');
+    // (The note shows at once, in English until Flatten's strings are in: from the cache, here.)
+    const note = await p2.waitForFunction(() => /Verschachteln$/.test(window.__vis('.view .banner .b-msg')?.textContent ?? '') && window.__vis('.view .banner .b-msg').textContent, null, { ...POLL, timeout: t.budget(15_000) }).then((h) => h.jsonValue(), () => p2.evaluate(() => window.__vis('.view .banner .b-msg')?.textContent ?? ''));
+    t.check(note === 'Dieses JSON hat keine flachen Schlüssel zum Verschachteln', 'localized offline: Flatten in German, never opened online', note);
+    await checkErrors(t, 'localized');
+  } finally {
+    proxy.close();
+  }
+});
+
 test("deploy: a tab open during a deploy keeps its build offline; new tabs get the new one", { variant: 'redeploy' }, async (t) => {
   const A = (await serveVariant('default')).base;
   const proxy = await startProxy({ A, A2: t.base });

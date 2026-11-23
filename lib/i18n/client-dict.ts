@@ -1,8 +1,9 @@
 /**
  * The browser's dictionaries, built from lib/i18n/<locale>/ui.json: a localized page's (lib/i18n/server.ts
- * `clientUi`, in its RSC payload) and huge mode's (lib/i18n/huge/huge-strings.<locale>.json, written by
- * scripts/i18n-huge.mjs and loaded when a huge file opens: lib/i18n/translate.ts `huge`). Plain data, no
- * imports at run time: the server, the scripts and the tests share it.
+ * `clientUi`, in its RSC payload), and the ones that load later: huge mode's and the lazily loaded features'
+ * (public/i18n/<name>-strings.<locale>.<hash>.json, written by scripts/i18n-huge.mjs; the page names its own
+ * language's: lib/i18n/server.ts `stringFiles`, lib/i18n/translate.ts). Plain data, no imports at run time: the
+ * server, the scripts and the tests share it.
  */
 import type { Forms, UiDict } from './ui';
 
@@ -22,6 +23,28 @@ const HUGE_ONLY = new Set(['cmd.shape', 'cmd.shape.terms', 'app.notStrictJson'])
  * match (tests/i18n.test.ts checks).
  */
 export const isHugeKey = (key: string) => /^(app|toast|cmd)\.huge/.test(key) || HUGE_ONLY.has(key);
+
+/** Features whose strings load with them (lib/i18n/translate.ts `lazy`). */
+export type LazyFeature = 'schema' | 'flatten';
+export const LAZY_FEATURES: readonly LazyFeature[] = ['schema', 'flatten'];
+/** The dictionaries that load after the page: huge mode's and the lazy features'. */
+export type StringsName = 'huge' | LazyFeature;
+export const STRING_FILES: readonly StringsName[] = ['huge', ...LAZY_FEATURES];
+/** A localized page's files of them (their URLs; a missing one: those strings show in English). */
+export type StringFiles = Partial<Record<StringsName, string>>;
+/** The Schema view's strings the first load shows: its tab, and Close schema (also a palette command). */
+const SCHEMA_FIRST = new Set(['app.schema', 'app.schema.close']);
+
+/**
+ * The lazily loaded feature a string belongs to (null: none). The Schema view's (components/SchemaView.tsx) and
+ * Flatten's options and notes (components/FlatItems.tsx) come with them; their tab, command and target labels
+ * stay in the page's dictionary. A string the rest of the app shows must not match (tests/i18n.test.ts checks).
+ */
+export function lazyFeature(key: string): LazyFeature | null {
+  if (/^(app\.schema\.|toast\.schema)/.test(key) && !SCHEMA_FIRST.has(key)) return 'schema';
+  if (/^(app\.flat|app\.(un)?flattenInstead$|eng\.(un)?flat|toast\.(un)?flattenedInput$)/.test(key)) return 'flatten';
+  return null;
+}
 
 /**
  * English text → translation for the keys `keep` takes. A plural string maps both English forms to the same
@@ -45,8 +68,11 @@ export function clientDict(en: Strings, translated: Strings, keep: (key: string)
   return out;
 }
 
-/** A localized page's dictionary: what the browser shows, but huge mode's strings. */
-export const pageDict = (en: Strings, translated: Strings) => clientDict(en, translated, (k) => CLIENT.test(k) && !isHugeKey(k));
+/** A localized page's dictionary: what the browser shows, but huge mode's strings and the lazy features'. */
+export const pageDict = (en: Strings, translated: Strings) => clientDict(en, translated, (k) => CLIENT.test(k) && !isHugeKey(k) && !lazyFeature(k));
 
-/** Huge mode's dictionary (lib/i18n/huge/huge-strings.<locale>.json). */
+/** A lazily loaded feature's dictionary (public/i18n/<feature>-strings.<locale>.<hash>.json). */
+export const lazyDict = (en: Strings, translated: Strings, feature: LazyFeature) => clientDict(en, translated, (k) => CLIENT.test(k) && lazyFeature(k) === feature);
+
+/** Huge mode's dictionary (public/i18n/huge-strings.<locale>.<hash>.json). */
 export const hugeDict = (en: Strings, translated: Strings) => clientDict(en, translated, (k) => CLIENT.test(k) && isHugeKey(k));

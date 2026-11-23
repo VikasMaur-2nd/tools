@@ -6,7 +6,8 @@
  *  /_next/static/*      cache-first (content-hashed, immutable); a worker's script
  *                       is answered with a new Response so it keeps its #params=
  *  other same-origin    stale-while-revalidate
- *  never touched        cross-origin, non-GET, /_vercel/* and /relay/* (analytics), RSC requests
+ *  never touched        cross-origin, non-GET, /_vercel/* and /relay/* (analytics), RSC requests,
+ *                       no-store requests (what the page fetches for the visitor: a document or schema by URL)
  *
  * What a page needs offline, its files: what its HTML names (scripts, styles,
  * fonts, icons), every chunk those scripts can load later ("static/chunks/…"
@@ -17,9 +18,13 @@
  * document opened at once) never shares the network or the device with 1.5 MB of
  * chunks it may not need yet.
  *
- * Huge mode's dictionaries (/_next/static/media/huge-strings.<lang>.<hash>.json, named in
- * every localized page's chunk) are followed for that page's own language only: a /de
- * visit caches the German one and no other; English pages none.
+ * A localized page's dictionaries (huge mode's, the Schema view's, Flatten's:
+ * /i18n/<name>-strings.<lang>.<hash>.json, named by their content) are named in its HTML,
+ * its own language's only, and handled as its /_next/static files are: cached with it,
+ * required, cache-first, retired after deploys. A /de visit so caches the German ones
+ * and no other; English pages none. (Builds before them named huge mode's in a chunk,
+ * /_next/static/media/huge-strings.<lang>.<hash>.json, every language's: followed for
+ * the page's own language only.)
  *
  * Pages are replaced whole: new HTML ('/' or any other page) goes into the cache
  * only once its files are (a 200, stored), so an interrupted visit leaves the copy
@@ -71,8 +76,10 @@ const CHUNK_RE = /["'](static\/(?:chunks|media)\/[^"'\\\s]+)["']/g;
 const CSS_URL_RE = /url\(\s*["']?([^"')\s]+)/g;
 
 const isStatic = (path) => path.startsWith('/_next/static/');
-/** Files named by their content, never changed (a new build names new ones): what deploys retire. */
-const isHashed = (path) => isStatic(path);
+// A localized page's dictionaries, named in its HTML (in the RSC payload); named by their content.
+const STRINGS_RE = /\/i18n\/[a-z]+-strings\.[a-z]{2}\.[0-9a-f]+\.json/g;
+/** Files named by their content: /_next/static files and those dictionaries (see the header). */
+const isHashed = (path) => isStatic(path) || /^\/i18n\/[a-z]+-strings\./.test(path);
 /**
  * A URL as the cache matches it: without its fragment. (Cache keys can keep one: WebKit lists a worker's
  * script under the URL it was started with, Turbopack's bootstrap plus #params=…, which pages name without.)
@@ -126,7 +133,7 @@ const cacheable = (res) => res && res.status === 200 && res.type === 'basic' && 
 
 /** Same-origin asset URLs referenced by an HTML document. */
 function extractAssets(html) {
-  const found = new Set(html.match(STATIC_RE) || []);
+  const found = new Set((html.match(STATIC_RE) || []).concat(html.match(STRINGS_RE) || []));
   let m;
   ATTR_RE.lastIndex = 0;
   while ((m = ATTR_RE.exec(html))) found.add(m[1]);
@@ -194,7 +201,7 @@ async function pageFiles(cache, html, fetchMissing, deep = true, page = ORIGIN +
     const results = await Promise.all(filesIn(url, text).map((u) => visit(u, false)));
     return results.indexOf(false) === -1;
   };
-  const results = await Promise.all(extractAssets(html).map((u) => visit(u, isStatic(new URL(u).pathname))));
+  const results = await Promise.all(extractAssets(html).map((u) => visit(u, isHashed(new URL(u).pathname))));
   return { ok: results.indexOf(false) === -1, files };
 }
 
@@ -468,12 +475,13 @@ self.addEventListener('activate', (event) => {
 self.addEventListener('message', (event) => {
   const data = event.data;
   if (!data || data.type !== 'cache' || !Array.isArray(data.urls)) return;
-  // Absolute same-origin URLs only (that's what the page sends).
+  // Absolute same-origin URLs only (that's what the page sends): pages and the app's hashed files, never another
+  // file it fetched (a document or schema by URL, fetched again here with cookies and kept).
   const urls = data.urls
     .slice(0, 500)
     .filter((u) => typeof u === 'string' && u.startsWith(ORIGIN + '/'))
     .map((u) => new URL(u))
-    .filter((url) => !bypass(url))
+    .filter((url) => !bypass(url) && (isHashed(url.pathname) || !FILE_RE.test(url.pathname)))
     .map((url) => url.href);
   const from = event.source && event.source.id;
   event.waitUntil(
@@ -510,6 +518,7 @@ self.addEventListener('fetch', (event) => {
   const req = event.request;
   if (req.method !== 'GET') return;
   if (req.cache === 'only-if-cached' && req.mode !== 'same-origin') return;
+  if (req.cache === 'no-store') return;
   const url = new URL(req.url);
   if (url.origin !== ORIGIN || bypass(url, req.headers)) return;
 
@@ -530,7 +539,7 @@ self.addEventListener('fetch', (event) => {
     } else {
       event.respondWith(networkFirst(event, req, tab));
     }
-  } else if (isStatic(url.pathname)) {
+  } else if (isHashed(url.pathname)) {
     event.respondWith(cacheFirst(event, req));
   } else {
     event.respondWith(staleWhileRevalidate(event, req));

@@ -38,6 +38,21 @@ function fail(m: string, p: number): never {
 
 const isWs = (c: number) => c === 32 || c === 9;
 
+/**
+ * Where the values come from, while locateImport (below) reads a text: for each list or mapping, the offset of each
+ * item or key (null: not reading for it, as importToJson does). For CSV, each record's fields' offsets.
+ */
+let where: WeakMap<object, Map<string | number, number>> | null = null;
+/** While locating (locateImport): each record's field starts, the header's, the keys; no JSON is written then. */
+let csvAt: { rows: number[][]; head: number[] | null; keys: string[] | null } | null = null;
+/** Notes that container `c`'s key or index `k` is written at `p` (the first place said wins). */
+const pin = (c: object, k: string | number, p: number) => {
+  if (!where) return;
+  let m = where.get(c);
+  if (!m) where.set(c, (m = new Map()));
+  if (!m.has(k)) m.set(k, p);
+};
+
 function emit(v: V, indent: string): string {
   let out = '';
   const nl = indent ? '\n' : '';
@@ -225,9 +240,11 @@ function csv(src: string, delim: string | null, indent: string, header = true, t
   };
   let row: string[] = [];
   let q: boolean[] = [];
+  let starts: number[] = [];
   for (;;) {
     let f: string;
     let quoted = false;
+    starts.push(i);
     if (src.charCodeAt(i) === 34) {
       quoted = true;
       const st = i++;
@@ -264,7 +281,12 @@ function csv(src: string, delim: string | null, indent: string, header = true, t
       continue;
     }
     if (row.length > 1 || row[0] !== '' || q[0]) {
-      if (!header) {
+      if (csvAt && (!header || keys)) csvAt.rows.push(starts);
+      else if (csvAt) csvAt.head = starts;
+      if (csvAt && (keys || !header)) {
+        // (Locating: only the keys a longer record adds, never its JSON.)
+        if (keys) while (keys.length < row.length) addKey('');
+      } else if (!header) {
         // (Its first row says whether the file quotes every field, as the first data row does with a header.)
         if (quoteAll < 0) quoteAll = q.every(Boolean) ? 1 : 0;
         out += (count++ ? ',' : '') + p1 + '[';
@@ -290,7 +312,9 @@ function csv(src: string, delim: string | null, indent: string, header = true, t
     if (i >= n) break;
     row = [];
     q = [];
+    starts = [];
   }
+  if (csvAt) csvAt.keys = keys;
   return count ? out + nl + ']' : '[]';
 }
 
@@ -773,17 +797,26 @@ function yaml(src: string, indent: string): V {
         const v = at(i) === 44 || at(i) === close ? null : flowNode();
         rawKey = key;
         const ks = keyOf(k, kp);
-        if (!isMap) a.push(new Map([[ks, v]]));
-        else if (key === '<<') mergeInto(m, v, (merged ??= new Set()), kp);
+        if (!isMap) {
+          const pair = new Map([[ks, v]]);
+          pin(a, a.length, kp);
+          pin(pair, ks, kp);
+          a.push(pair);
+        } else if (key === '<<') mergeInto(m, v, (merged ??= new Set()), kp);
         else {
           if (m.has(ks) && !merged?.delete(ks)) f(`Duplicate key "${ks}"`, kp);
+          pin(m, ks, kp);
           m.set(ks, v);
         }
       } else if (isMap) {
         const ks = keyOf(k, kp);
         if (m.has(ks)) f(`Duplicate key "${ks}"`, kp);
+        pin(m, ks, kp);
         m.set(ks, null);
-      } else a.push(ex ? new Map([[keyOf(k, kp), null]]) : k);
+      } else {
+        pin(a, a.length, kp);
+        a.push(ex ? new Map([[keyOf(k, kp), null]]) : k);
+      }
       fws();
       if (at(i) === 44) i++;
       else if (at(i) !== close) f(i >= n ? `Unterminated flow ${isMap ? "mapping: missing '}'" : "sequence: missing ']'"}` : `Expected ',' or '${isMap ? '}' : ']'}'`, i >= n ? s : i);
@@ -925,6 +958,7 @@ function yaml(src: string, indent: string): V {
       if (merge) mergeInto(m, vc ? node(c, vc) : null, (merged ??= new Set()), kp);
       else {
         if (m.has(k) && !merged?.delete(k)) f(`Duplicate key "${k}"`, kp);
+        pin(m, k, kp);
         m.set(k, vc ? node(c, vc) : null);
       }
       skip();
@@ -938,6 +972,7 @@ function yaml(src: string, indent: string): V {
   const seq = (c: number): V[] => {
     const a: V[] = [];
     for (;;) {
+      pin(a, a.length, i);
       i++;
       a.push(node(c, SEQ));
       skip();
@@ -966,6 +1001,7 @@ function yaml(src: string, indent: string): V {
       }
     }
     anchors.clear(); // anchors belong to their document
+    pin(docs, docs.length, i);
     docs.push(node(-1, 0));
     skip();
     if (i < n && !docMark(i)) f(col(i) ? 'Bad indentation: this line is indented more than its block' : 'Unexpected content after the document');
@@ -1071,20 +1107,32 @@ function xml(src: string): V {
     const t = fr.ws ? fr.text.slice(0, fr.text.length - fr.ws) : fr.text;
     let v: V = t || null;
     if (fr.m) {
-      if (t) fr.m.set('#text', t);
+      if (t) {
+        pin(fr.m, '#text', fr.p);
+        fr.m.set('#text', t);
+      }
       v = fr.m;
     }
     const par = stack[stack.length - 1];
     if (!par) {
       root = new Map([[fr.name, v]]);
+      pin(root, fr.name, fr.p);
       return;
     }
     const m = par.m ?? (par.m = new Map());
+    pin(m, fr.name, fr.p);
     if (!m.has(fr.name)) m.set(fr.name, v);
     else {
       const prev = m.get(fr.name) as V;
-      if (Array.isArray(prev)) prev.push(v);
-      else m.set(fr.name, [prev, v]);
+      if (Array.isArray(prev)) {
+        pin(prev, prev.length, fr.p);
+        prev.push(v);
+      } else {
+        const list = [prev, v];
+        pin(list, 0, where?.get(m)?.get(fr.name) ?? fr.p);
+        pin(list, 1, fr.p);
+        m.set(fr.name, list);
+      }
     }
   };
   /** Skips past `end`, looked for from `from` (after the opening, which may not share its characters: <!--> is no comment). */
@@ -1178,6 +1226,7 @@ function xml(src: string): V {
         if (e < 0) f('Unterminated attribute value');
         const m = fr.m ?? (fr.m = new Map());
         if (m.has('@' + an)) f(`Duplicate attribute ${an}`, ap);
+        pin(m, '@' + an, ap);
         // (literal tabs and line breaks normalize to spaces, ones references stand for stay: 3.3.3)
         m.set('@' + an, attr(src.slice(i + 1, e).replace(/[\t\n\r]/g, ' '), i + 1));
         i = e + 1;
@@ -1329,6 +1378,7 @@ function toml(src: string): V {
         break;
       }
       if (i >= n) f("Unterminated array: missing ']'", s);
+      pin(a, a.length, i);
       a.push(value());
       wsnl();
       if (at(i) === 44) i++;
@@ -1397,6 +1447,7 @@ function toml(src: string): V {
       let x = m.get(path[k]);
       if (x === undefined) {
         x = new Map();
+        pin(m, path[k], kp);
         m.set(path[k], x);
         dotted.add(x);
       } else if (!(x instanceof Map) || defined.has(x) || frozen.has(x)) f(`Cannot add keys to "${path.slice(0, k + 1).join('.')}": it is already defined`, kp);
@@ -1406,6 +1457,7 @@ function toml(src: string): V {
     }
     const last = path[path.length - 1];
     if (m.has(last)) f(`Duplicate key "${path.join('.')}"`, kp);
+    pin(m, last, kp);
     m.set(last, v);
   };
   /** Walks a header path, creating implicit tables; returns the parent of the last segment. */
@@ -1413,8 +1465,10 @@ function toml(src: string): V {
     let m = root;
     for (let k = 0; k < path.length - 1; k++) {
       let x = m.get(path[k]);
-      if (x === undefined) m.set(path[k], (x = new Map()));
-      else if (Array.isArray(x) && aot.has(x)) x = x[x.length - 1];
+      if (x === undefined) {
+        pin(m, path[k], kp);
+        m.set(path[k], (x = new Map()));
+      } else if (Array.isArray(x) && aot.has(x)) x = x[x.length - 1];
       if (!(x instanceof Map) || frozen.has(x)) f(`Cannot extend "${path.slice(0, k + 1).join('.')}": it is already defined as a value`, kp);
       m = x as Map<string, V>;
     }
@@ -1437,15 +1491,19 @@ function toml(src: string): V {
       const name = path.join('.');
       if (isArr) {
         if (x === undefined) {
+          pin(parent, last, kp);
           parent.set(last, (x = []));
           aot.add(x);
         } else if (!Array.isArray(x) || !aot.has(x)) f(`Cannot define [[${name}]]: "${name}" is already defined and is not an array of tables`, kp);
         const t = new Map<string, V>();
+        pin(x as V[], (x as V[]).length, kp);
         (x as V[]).push(t);
         cur = t;
       } else {
-        if (x === undefined) parent.set(last, (x = new Map()));
-        else if (!(x instanceof Map) || defined.has(x) || dotted.has(x) || frozen.has(x)) f(`Table [${name}] is defined more than once`, kp);
+        if (x === undefined) {
+          pin(parent, last, kp);
+          parent.set(last, (x = new Map()));
+        } else if (!(x instanceof Map) || defined.has(x) || dotted.has(x) || frozen.has(x)) f(`Table [${name}] is defined more than once`, kp);
         defined.add(x as object);
         cur = x as Map<string, V>;
       }
@@ -1478,5 +1536,76 @@ export function importToJson(text: string, format: ImportFormat, indent: string,
     }
     if (e instanceof RangeError || tooDeep(e)) return { error: /string length/i.test((e as Error).message) ? 'The result is too large' : 'Nesting is too deep to convert' };
     throw e;
+  }
+}
+
+/** Where a value of what a text converts to is in that text: the offset, and whether it is the value's own place. */
+export type Place = { p: number; exact: boolean };
+
+const INDEX = /^(0|[1-9]\d*)$/;
+
+/** Where a JSON Pointer's value (`key`: its property name) is in a text (see locateImport). */
+type Locator = (ptr: string, key: boolean) => Place;
+
+/** The last text read for places, how, and its locator (null: it doesn't convert): read again only when they change. */
+let located: { text: string; how: string; at: Locator | null } | null = null;
+
+/**
+ * Where the values at JSON Pointers `pointers` of what `text` converts to (importToJson, the same format and
+ * options) are in `text`: each one's key or item, or the nearest one written there (`exact` false), such as a
+ * missing CSV cell's record, or a value of a YAML merge key's mapping. With `keys[i]`, pointer i's property name
+ * (a CSV column's header cell). null when `text` doesn't convert. The places of the last text are kept: asked again
+ * for the same text and options, it isn't read again.
+ */
+export function locateImport(text: string, format: ImportFormat, options: CsvOptions, pointers: string[], keys: boolean[] = []): Place[] | null {
+  const how = `${format}|${options.delimiter ?? ''}|${options.header !== false}|${options.types !== false}`;
+  if (located?.text !== text || located.how !== how) located = { text, how, at: locator(text, format, options) };
+  const at = located.at;
+  return at && pointers.map((ptr, i) => at(ptr, !!keys[i]));
+}
+
+function locator(text: string, format: ImportFormat, options: CsvOptions): Locator | null {
+  const bom = text.charCodeAt(0) === 0xfeff ? 1 : 0;
+  let src = bom ? text.slice(1) : text;
+  const tokens = (ptr: string) => (ptr ? ptr.slice(1).split('/').map((t) => t.replace(/~1/g, '/').replace(/~0/g, '~')) : []);
+  const start = Math.max(0, src.search(/\S/)) + bom;
+  try {
+    if (format === 'csv' || format === 'tsv') {
+      const at: { rows: number[][]; head: number[] | null; keys: string[] | null } = (csvAt = { rows: [], head: null, keys: null });
+      csv(src, options.delimiter || (format === 'tsv' ? '\t' : null), '', options.header !== false, options.types !== false);
+      return (ptr, key) => {
+        const [r, c, ...more] = tokens(ptr);
+        if (r === undefined) return { p: start, exact: true };
+        const fields = INDEX.test(r) ? at.rows[Number(r)] : undefined;
+        if (!fields) return { p: start, exact: false };
+        const k = c === undefined ? 0 : at.keys ? at.keys.indexOf(c) : INDEX.test(c) ? Number(c) : -1;
+        // (A property name is its column's header cell; a column the header doesn't name: the header row.)
+        if (key && at.head && c !== undefined && !more.length) return k >= 0 && k < at.head.length ? { p: at.head[k] + bom, exact: true } : { p: at.head[0] + bom, exact: false };
+        // (A record shorter than the header has no cells for the rest: its record then.)
+        if (k < 0 || k >= fields.length) return { p: fields[0] + bom, exact: false };
+        return { p: fields[k] + bom, exact: !more.length };
+      };
+    }
+    src = src.replace(/\r\n?/g, '\n');
+    const pins = (where = new WeakMap());
+    const root = format === 'yaml' ? yaml(src, '') : format === 'xml' ? xml(src) : toml(src);
+    // (A value's place is its key's or item's, so a property name's is the same.)
+    return (ptr) => {
+      let v: V | undefined = root;
+      let p = start;
+      for (const t of tokens(ptr)) {
+        const k: string | number = Array.isArray(v) ? (INDEX.test(t) ? Number(t) : -1) : t;
+        const q = v !== null && typeof v === 'object' ? pins.get(v)?.get(k) : undefined;
+        if (q === undefined) return { p, exact: false };
+        v = v instanceof Map ? v.get(t) : (v as V[])[k as number];
+        p = q + bom;
+      }
+      return { p, exact: true };
+    };
+  } catch {
+    return null;
+  } finally {
+    where = null;
+    csvAt = null;
   }
 }
