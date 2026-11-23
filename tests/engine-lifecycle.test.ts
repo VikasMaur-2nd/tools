@@ -49,12 +49,15 @@ const settled = () => new Promise((r) => setImmediate(r));
 
 /**
  * `idle`: the page's idle callbacks (default: a task like any). `worker`: the service worker registers and
- * gets ready, and what pages post to it goes in `sw.posts` (default: registering never ends).
+ * gets ready, and what pages post to it goes in `sw.posts` (default: registering never ends). `hang`: a module
+ * whose import never settles (a chunk that never arrives).
  */
-function session({ idle, worker = false }: { idle?: (fn: () => void) => void; worker?: boolean } = {}) {
+function session({ idle, worker = false, hang }: { idle?: (fn: () => void) => void; worker?: boolean; hang?: string } = {}) {
   const tasks = new Map<number, () => void>();
+  /** Each task's timer delay (0 for the rest): `drain(below)` runs only those due sooner. */
+  const delays = new Map<number, number>();
   let id = 0;
-  const defer = (fn: () => void) => { tasks.set(++id, fn); return id; };
+  const defer = (fn: () => void, ms?: unknown) => { tasks.set(++id, fn); delays.set(id, typeof ms === 'number' ? ms : 0); return id; };
   const cancel = (k: number) => { tasks.delete(k); };
   const state: Dynamic = { fileName: null, status: { kind: 'empty' }, sizes: null, convert: { loading: false, error: null, lines: 0, bytes: 0 }, find: { open: false, q: '', total: 0, index: -1, seq: 0 }, toast: null, menu: null, input: { format: 'json', delimiter: 'auto', detected: ',' } };
   const errors: unknown[] = [];
@@ -100,6 +103,8 @@ function session({ idle, worker = false }: { idle?: (fn: () => void) => void; wo
       terminate() {}
     },
     require: (name: string) => {
+      // (A thenable module object: the import's promise follows it, and it never settles.)
+      if (name === hang) return { then() {} };
       if (name === './store') return { paired, store: { get: () => state, set: (patch: object) => { Object.assign(state, patch); }, settings() {} } };
       if (name === './idle') return { soon: defer, idle: idle ?? defer };
       if (name === './instance') return { getEngine: () => current, getDiffMenu: () => null };
@@ -120,12 +125,21 @@ function session({ idle, worker = false }: { idle?: (fn: () => void) => void; wo
     return engine;
   };
   const engine = make();
-  const tick = () => { const first = tasks.entries().next().value; if (first) { tasks.delete(first[0]); first[1](); } return !!first; };
-  const drain = async () => {
+  const tick = (below = Infinity) => {
+    for (const [k, fn] of tasks) {
+      if (!((delays.get(k) ?? 0) < below)) continue;
+      tasks.delete(k);
+      fn();
+      return true;
+    }
+    return false;
+  };
+  /** Runs the tasks (with `below`, only timers due sooner than that) and what they lead to, until none is left. */
+  const drain = async (below = Infinity) => {
     for (let k = 0; k < 100; k++) {
       await settled();
-      if (!tick()) return;
-      while (tick());
+      if (!tick(below)) return;
+      while (tick(below));
     }
   };
   return { engine, make, state, errors, toasts, tasks, tick, drain, storage, fetches, sw, listeners, document, location, navigator, setCurrent: (e: Dynamic | null) => { current = e; }, workers: () => workers };
@@ -748,6 +762,18 @@ test("the warm-up hands the page's files to the service worker even when idle ca
     const posts = s.sw.posts.filter((m: Dynamic) => m?.type === 'cache' && m.urls.includes('https://tools.example/'));
     assert.equal(posts.length, 1, idle ? 'idle never runs' : 'idle runs');
   }
+});
+
+test("the warm-up goes on past a feature's module that never arrives, 20 s on (review 1, finding 7)", async () => {
+  // The Convert code's chunk never arrives (its script element neither loads nor fails).
+  const s = session({ worker: true, hang: '../convert' });
+  s.engine.registerSW();
+  const posted = () => s.sw.posts.filter((m: Dynamic) => m?.type === 'cache' && m.urls.includes('https://tools.example/'));
+  // Everything due sooner than 20 s has run (idle steps, their 6 s timers): the warm-up waits on that module.
+  await s.drain(20_000);
+  assert.equal(posted().length, 0, 'not before the deadline');
+  await s.drain();
+  assert.equal(posted().length, 1, 'once after it');
 });
 
 test('expanding nested JSON is dropped if the document changed while its code loaded', async () => {
