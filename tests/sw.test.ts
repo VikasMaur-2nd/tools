@@ -1035,3 +1035,25 @@ test('service worker: a home that failed to follow a tool page to its new build 
   await sw.post(['/', '/tools/json-graph'], 'b2');
   assert.ok(!sw.statics().some((p) => p.includes('/a-')), sw.statics().join(' '));
 });
+
+test("service worker: main's worker brought back never deletes what a tab still being opened guards (finding 4)", async () => {
+  const env = world();
+  const sw = worker(undefined, env);
+  sw.serve(build('a'));
+  await sw.install();
+  await sw.post(['/'], 'first');
+  // Build b: a tab whose navigation has no id (resultingClientId) opens '/' from the cached shell, build a,
+  // while its visit brings build b in. Build a's files are kept for it: its tab is UNSEEN for now.
+  sw.serve(build('b'));
+  assert.match((await sw.visit('/', ''))!, /Home a/);
+  assert.match(sw.cached('/')!, /Home b/);
+  sw.tabs(['anon']); // it shows among the tabs
+  // Main's worker comes back (a rollback) before this one wrote that tab's id in: it reads the record's one list.
+  const main = worker(readFileSync(join(process.cwd(), 'harness/suites/platform/fixtures/main-sw.js'), 'utf8'), env);
+  await main.install();
+  await main.activate();
+  await main.post(['/'], 'anon');
+  // The tab runs build a: offline, every file of it still comes.
+  main.offline();
+  assert.deepEqual(await loadsAll(main, 'anon', filesOf('a')), []);
+});

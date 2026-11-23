@@ -409,9 +409,12 @@ async function tidy(cache, replaced, posted, from) {
     if (saved) await cache.delete(RETIRED);
     return;
   }
-  // (Also as one list, the record of workers before generations: one still running, or brought back, reads that.)
-  const all = (k) => [].concat(...gens.map((g) => g[k]));
-  const json = JSON.stringify({ gens, urls: all('urls'), clients: Array.from(new Set(all('clients'))), at: Math.max(...gens.map((g) => g.at)) });
+  // (Also as one list, the record of workers before generations: one still running, or brought back, reads that.
+  // Without a generation one of whose tabs is UNSEEN: such a worker knows no UNSEEN, takes it for a closed tab and
+  // would delete what it guards. Those files stay, should one come back, until this one tidies up again.)
+  const legacy = gens.filter((g) => g.clients.indexOf(UNSEEN) === -1);
+  const all = (k) => [].concat(...legacy.map((g) => g[k]));
+  const json = JSON.stringify({ gens, urls: all('urls'), clients: Array.from(new Set(all('clients'))), at: legacy.length ? Math.max(...legacy.map((g) => g.at)) : now });
   if (json !== text) await cache.put(RETIRED, new Response(json, { headers: { 'content-type': 'application/json' } }));
 }
 
