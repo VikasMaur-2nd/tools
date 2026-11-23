@@ -772,8 +772,8 @@ test("the warm-up goes on past a feature's module that never arrives, 20 s on (r
   // Everything due sooner than 20 s has run (idle steps, their 6 s timers): the warm-up waits on that module.
   await s.drain(20_000);
   assert.equal(posted().length, 0, 'not before the deadline');
-  await s.drain();
-  assert.equal(posted().length, 1, 'once after it');
+  await s.drain(20_001);
+  assert.equal(posted().length, 1, 'once at it');
 });
 
 test('expanding nested JSON is dropped if the document changed while its code loaded', async () => {
