@@ -1421,7 +1421,7 @@ test("service worker: a page's early report (files only, before its warm-up) sta
   sw.fetched.length = 0;
   // Links' code goes first, on its own: what it names is cached, nothing else.
   await sw.post(['/_next/static/chunks/a-main.js']);
-  assert.deepEqual(sw.fetched, []);
+  assert.deepEqual([...sw.fetched], []);
   // The warm-up's report (it names the page) follows the page's lazy chunks.
   await sw.post(['/', '/_next/static/chunks/a-main.js']);
   assert.ok(sw.fetched.includes('/_next/static/chunks/a-graph.js'));
