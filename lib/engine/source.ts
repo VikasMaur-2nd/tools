@@ -4,6 +4,8 @@
  */
 import { codeTokens } from '../convert/highlight';
 import { detectFormat, importToJson, sniffDelimiter, type CsvOptions } from '../convert/import';
+// (The Schema view's errors' places in such an input: components/SchemaView.tsx, through Engine.source.)
+export { locateImport } from '../convert/import';
 import type { Colors } from './editor';
 import { escapeHtml, type Mark } from './highlight';
 import type { SourceFormat } from './store';

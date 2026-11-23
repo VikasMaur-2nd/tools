@@ -99,6 +99,8 @@ function worker(source = readFileSync(join(process.cwd(), 'public/sw.js'), 'utf8
     install: () => dispatch('install'),
     visit,
     post: (urls: string[], from = 'tab') => dispatch('message', { data: { type: 'cache', urls: urls.map((u) => ORIGIN + u) }, source: { id: from } }),
+    /** A fetch() the page makes (not a navigation), with its cache mode: the SW's answer, null if it leaves it alone. */
+    get: (path: string, cache = 'default') => dispatch('fetch', { request: { method: 'GET', url: ORIGIN + path, mode: 'cors', headers: new Headers(), destination: '', cache } }),
     cached: (path: string) => store.get(ORIGIN + path)?.body,
     has: (path: string) => store.has(ORIGIN + path),
     statics: () => [...store.keys()].filter((u) => u.includes('/_next/static/')).map((u) => new URL(u).pathname).sort(),
@@ -258,4 +260,104 @@ test("service worker: a page caches huge mode's dictionary of its own language o
   // Offline, the German page's dictionary is answered from the cache.
   sw.offline();
   assert.equal(sw.cached(dict('de')), '{"Large file":"Große Datei"}');
+});
+
+/**
+ * A build whose localized pages name their language's dictionaries in their RSC payload (lib/i18n/server.ts
+ * stringFiles): `dicts` maps a locale to its files' URLs. `tag` makes the hashed chunk names.
+ */
+function localized(tag: string, dicts: Record<string, string[]>): Files {
+  const page = (title: string, urls: string[] = []) =>
+    `<!doctype html><title>${title}</title><script src="/_next/static/chunks/${tag}-main.js"></script>` +
+    `<script>self.__next_f.push([1,"{\\"files\\":{${urls.map((u, i) => `\\"f${i}\\":\\"${u}\\"`).join(',')}}}"])</script>`;
+  return {
+    '/': page('Home ' + tag),
+    ...Object.fromEntries(Object.entries(dicts).map(([l, urls]) => [`/${l}`, page(`${l} ${tag}`, urls)])),
+    [`/_next/static/chunks/${tag}-main.js`]: `x.l("static/chunks/${tag}-lazy.js")`,
+    [`/_next/static/chunks/${tag}-lazy.js`]: 'lazy()',
+    ...Object.fromEntries(Object.values(dicts).flat().map((u) => [u, `{"file":"${u}"}`])),
+  };
+}
+const dictsOf = (sw: ReturnType<typeof worker>) => [...new Set(sw.fetched)].filter((p) => p.startsWith('/i18n/'));
+
+test('service worker: a localized page\'s dictionaries come with it, as its chunks do: its own language\'s only, offline too', async () => {
+  const de = ['/i18n/huge-strings.de.0a1b2c3d4e5f.json', '/i18n/schema-strings.de.1a1b2c3d4e5f.json', '/i18n/flatten-strings.de.2a1b2c3d4e5f.json'];
+  const ja = ['/i18n/huge-strings.ja.3a1b2c3d4e5f.json', '/i18n/schema-strings.ja.4a1b2c3d4e5f.json', '/i18n/flatten-strings.ja.5a1b2c3d4e5f.json'];
+  const sw = worker();
+  sw.serve(localized('a', { de, ja }));
+  await sw.install();
+  await sw.post(['/']);
+  // English: none.
+  assert.deepEqual(dictsOf(sw), []);
+  // A German page: stored with its files, its dictionaries among them; no other language's.
+  await sw.visit('/de');
+  assert.match(sw.cached('/de')!, /de a/);
+  assert.deepEqual(de.filter((u) => sw.has(u)), de);
+  assert.ok(!sw.fetched.some((p) => p.includes('.ja.')));
+  // Offline, a feature opening on the German page gets its strings from the cache.
+  sw.offline();
+  assert.match((await sw.visit('/de'))!, /de a/);
+  assert.equal(sw.cached(de[1]), `{"file":"${de[1]}"}`);
+});
+
+test('service worker: a dictionary that doesn\'t arrive holds its page back, as a missing chunk does (main\'s fail404)', async () => {
+  const a = '/i18n/schema-strings.de.aaaaaaaaaaaa.json';
+  const b = '/i18n/schema-strings.de.bbbbbbbbbbbb.json';
+  const sw = worker();
+  sw.serve(localized('a', { de: [a] }));
+  await sw.install();
+  await sw.visit('/de');
+  assert.match(sw.cached('/de')!, /de a/);
+  // A deploy whose German dictionary is missing: the page itself is shown, the cached copy stays, with its dictionary.
+  sw.serve({ ...localized('b', { de: [b] }), [b]: 404 });
+  assert.match((await sw.visit('/de'))!, /de b/);
+  assert.match(sw.cached('/de')!, /de a/);
+  sw.offline();
+  assert.match((await sw.visit('/de'))!, /de a/);
+  assert.equal(sw.cached(a), `{"file":"${a}"}`);
+  // The server has it again: the next visit stores the new copy with it.
+  sw.offline(false);
+  sw.serve(localized('b', { de: [b] }));
+  await sw.visit('/de');
+  assert.match(sw.cached('/de')!, /de b/);
+  assert.ok(sw.has(b));
+});
+
+test('service worker: after a deploy, an old build\'s dictionaries go once its tabs are closed, as its chunks do', async () => {
+  const a = '/i18n/schema-strings.de.aaaaaaaaaaaa.json';
+  const b = '/i18n/schema-strings.de.bbbbbbbbbbbb.json';
+  const sw = worker();
+  sw.serve(localized('a', { de: [a] }));
+  await sw.install();
+  await sw.visit('/de', 'tab-a');
+  sw.tabs(['tab-a']);
+  // Build b: the German page is visited again, then the shell's change is seen (a deploy).
+  sw.serve(localized('b', { de: [b] }));
+  await sw.visit('/de', 'tab-b');
+  await sw.visit('/', 'tab-b');
+  await sw.post(['/'], 'tab-b');
+  // The tab of build a is still open: its dictionary stays.
+  assert.ok(sw.has(a) && sw.has(b));
+  // Closed: it goes with build a's chunks.
+  sw.tabs(['tab-b']);
+  await sw.post(['/de'], 'tab-b');
+  assert.deepEqual([sw.has(a), sw.has(b), sw.has('/_next/static/chunks/a-main.js')], [false, true, false]);
+});
+
+test('service worker: what the page fetches for the visitor (no-store) is never answered or kept; the warm-up names only pages and app files (review 2, finding 2)', async () => {
+  const sw = worker();
+  sw.serve({ ...build('a'), '/schema.json': '{"type": "string"}', '/api/schema': '{}' });
+  await sw.install();
+  // A schema or document by URL: the SW leaves it alone (the browser fetches it), nothing is cached.
+  assert.equal(await sw.get('/schema.json', 'no-store'), null);
+  assert.ok(!sw.has('/schema.json'));
+  // (Without no-store, a same-origin file is answered and kept: what the page must not let happen to them.)
+  assert.ok(await sw.get('/schema.json'));
+  // The warm-up: a file the page fetched isn't fetched again here, nor kept; its pages and app files still are.
+  const fresh = worker();
+  fresh.serve({ ...build('a'), '/schema.json': '{"type": "string"}' });
+  await fresh.install();
+  await fresh.post(['/', '/schema.json', '/tools/json-graph', '/_next/static/chunks/a-graph.js']);
+  assert.ok(!fresh.fetched.includes('/schema.json') && !fresh.has('/schema.json'));
+  assert.ok(fresh.has('/tools/json-graph') && fresh.has('/_next/static/chunks/a-graph.js'));
 });

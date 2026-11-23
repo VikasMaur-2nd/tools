@@ -18,11 +18,17 @@ async function crash(t, { savedBefore, text }) {
   const { page } = t;
   let patched = 0;
   await t.context.route('**/_next/static/chunks/*.js', async (route) => {
-    const response = await route.fetch();
-    const source = await response.text();
-    const js = source.replaceAll('className:"statusbar"', 'className:(self.__boom?(()=>{throw Error("forced test error")})():"statusbar")');
-    if (js !== source) patched++;
-    await route.fulfill({ response, body: js });
+    // A chunk still loading when the test ends has its response disposed with the context: that
+    // rejection must not escape the handler, or it ends the whole harness run.
+    try {
+      const response = await route.fetch();
+      const source = await response.text();
+      const js = source.replaceAll('className:"statusbar"', 'className:(self.__boom?(()=>{throw Error("forced test error")})():"statusbar")');
+      if (js !== source) patched++;
+      await route.fulfill({ response, body: js });
+    } catch {
+      await route.continue().catch(() => {});
+    }
   });
   // A document saved by an earlier visit (only on the first load of this tab).
   if (savedBefore) await t.context.addInitScript(() => {

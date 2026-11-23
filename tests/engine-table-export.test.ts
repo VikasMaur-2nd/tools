@@ -7,6 +7,7 @@ import { createRequire } from 'node:module';
 import ts from 'typescript';
 import { parse, type JNode } from '../lib/json/parser';
 import { EN } from '../lib/i18n/ui';
+import { paired } from '../lib/engine/store';
 
 // The Table's exports as the engine runs them (Copy / Download CSV, Download Excel): what they write, from
 // which node, under which names. convert/xlsx is the real one, behind a spy.
@@ -31,7 +32,7 @@ function session(view: string, fileName: string, doc: string, shown: (root: JNod
   runInNewContext(js, {
     exports: out, performance, URL, Blob, Error, Promise,
     require: (name: string) => {
-      if (name === './store') return { store: { get: () => state, set: (patch: Dynamic) => Object.assign(state, patch) } };
+      if (name === './store') return { paired, store: { get: () => state, set: (patch: Dynamic) => Object.assign(state, patch) } };
       if (name === '../analytics') return { track: () => {}, reportError: (...args: unknown[]) => calls.push(['error', ...args]) };
       if (name === '../i18n/ui') return { rt: EN };
       if (name === '../convert/xlsx') {

@@ -7,11 +7,11 @@ import { createPortal } from 'react-dom';
 import { PRIVATE, PRIVATE_LABELS } from '@/lib/analytics';
 import { Engine, type EnginePreset } from '@/lib/engine/engine';
 import { idle } from '@/lib/engine/idle';
+import { linkIn } from '@/lib/engine/rules';
 import { act, getEngine, setEngine } from '@/lib/engine/instance';
-import { store, useUI, type CsvDelimiter, type IndentId, type JwtInfo, type SourceFormat, type View } from '@/lib/engine/store';
-import { TARGETS, targetInfo } from '@/lib/engine/targets';
+import { paired, store, useUI, type CsvDelimiter, type IndentId, type JwtInfo, type SourceFormat, type View } from '@/lib/engine/store';
+import { TARGETS, isFlat, targetInfo } from '@/lib/engine/targets';
 import { useT } from '@/lib/i18n/react';
-import { parseLink } from '@/lib/link';
 import { startAgentTools } from '@/lib/webmcp';
 import { setRuntime, type T } from '@/lib/i18n/ui';
 import { Icon, type IconName } from './icons';
@@ -369,6 +369,7 @@ function ViewMenu() {
                 />
               )}
               {info.group === 'Types' && <MSep />}
+              {isFlat(info.id) && <Flat flatten={info.id === 'flatten'} close={close} />}
               <FoldItems close={close} />
               <WrapItem />
             </>
@@ -385,7 +386,7 @@ function ViewMenu() {
 function FindBar() {
   const { open, q, total, index, note, seq } = useUI((s) => s.find);
   const view = useUI((s) => s.settings.view);
-  if (!open || view === 'compare') return null;
+  if (!open || paired(view)) return null;
   return <FindInput key={seq} initial={q} q={q} total={total} index={index} note={note} view={view} />;
 }
 
@@ -496,6 +497,7 @@ const VIEWS: { id: View; label: string }[] = [
   { id: 'graph', label: 'Graph' },
   { id: 'convert', label: 'Convert' },
   { id: 'compare', label: 'Compare' },
+  { id: 'schema', label: 'Schema' },
 ];
 
 /** Text tabs; on narrow panes a single dropdown instead. */
@@ -637,7 +639,7 @@ function ViewToolbar() {
         {view === 'table' && <Crumbs />}
         {view === 'convert' && <TargetPick />}
       </div>
-      {view !== 'compare' && (
+      {!paired(view) && (
         <div className="vicons">
           <button
             type="button"
@@ -758,7 +760,7 @@ function Banner() {
 function Watermark() {
   const empty = useUI((s) => s.empty);
   const view = useUI((s) => s.settings.view);
-  if (!empty || view === 'compare') return null;
+  if (!empty || paired(view)) return null;
   return (
     <div className="watermark" aria-hidden="true" />
   );
@@ -785,6 +787,7 @@ function ViewerPane({
   codeRef,
   fmtRef,
   cmpRef,
+  schRef,
 }: {
   treeRef: React.RefObject<HTMLDivElement | null>;
   fmtRef: React.RefObject<HTMLDivElement | null>;
@@ -792,10 +795,12 @@ function ViewerPane({
   graphRef: React.RefObject<HTMLDivElement | null>;
   codeRef: React.RefObject<HTMLDivElement | null>;
   cmpRef: React.RefObject<HTMLDivElement | null>;
+  schRef: React.RefObject<HTMLDivElement | null>;
 }) {
   const view = useUI((s) => s.settings.view);
   const stale = useUI((s) => s.stale);
   const empty = useUI((s) => s.empty);
+  const flat = useUI((s) => isFlat(s.settings.target));
   const t = useT();
   return (
     <section className="pane pane-view" aria-label={t('JSON viewer')}>
@@ -803,6 +808,7 @@ function ViewerPane({
       {/* Everything in here shows the document: session replay records it as an empty box. */}
       <div className={`view ${PRIVATE}${stale ? ' stale' : ''}`}>
         <Banner />
+        {view === 'convert' && flat && <Flat />}
         <FindBar />
         <div id="view-format" className="cv cv-wrap" ref={fmtRef} hidden={view !== 'format' || empty} tabIndex={0} aria-label={t('Formatted output')}>
           <div className="cv-sizer">
@@ -843,6 +849,8 @@ function ViewerPane({
         <div id="view-compare" className="cmp-host" ref={cmpRef} hidden={view !== 'compare'}>
           {view === 'compare' && <CompareHost />}
         </div>
+        {/* The Schema view's results (components/SchemaView.tsx renders into it). */}
+        <div id="view-schema" className="cmp-host" ref={schRef} hidden={view !== 'schema'} />
       </div>
     </section>
   );
@@ -853,6 +861,8 @@ function ViewerPane({
 const CommandPalette = dynamic(() => import('./dialogs').then((m) => m.CommandPalette), { ssr: false });
 const ShortcutsDialog = dynamic(() => import('./dialogs').then((m) => m.ShortcutsDialog), { ssr: false });
 const ContextMenuPopup = dynamic(() => import('./ContextMenu'), { ssr: false });
+// Flatten and unflatten's options (with `close`: in the menu) and note on the output: loaded when one of them is the target.
+const Flat = dynamic(() => import('./FlatItems'), { ssr: false });
 
 /** True once the page has been idle after it started. */
 function useIdle() {
@@ -902,6 +912,16 @@ const CompareView = dynamic(() => import('./CompareView'), {
     return <div className="cv-note">{useT()('Loading compare…')}</div>;
   },
 });
+// The Schema view (JSON Schema validation) is code-split the same way: its schema editor's column, kept once opened
+// (its text and undo stay while another view is open), and its results, put in the viewer with react-dom's
+// createPortal (handed over: react-dom stays in the first load's chunks).
+const SchemaView = dynamic(() => import('./SchemaView'), { ssr: false });
+function SchemaColumn({ host }: { host: React.RefObject<HTMLDivElement | null> }) {
+  const on = useUI((s) => s.settings.view === 'schema');
+  const [seen, setSeen] = useState(false);
+  if (on && !seen) setSeen(true);
+  return seen ? <SchemaView hidden={!on} portal={createPortal} host={host} /> : null;
+}
 /**
  * Huge-file mode (a file too big for the editor, lib/huge): its own viewer, loaded with it only when one opens.
  * (Its status goes in the status bar through react-dom's portal, handed over: react-dom stays in the first load's chunks.)
@@ -929,9 +949,9 @@ function CompareHost() {
 function Splitter() {
   const split = useUI((s) => s.settings.split);
   const splitCmp = useUI((s) => s.settings.splitCmp);
-  const comparing = useUI((s) => s.settings.view === 'compare');
+  const comparing = useUI((s) => paired(s.settings.view));
   const vertical = () => matchMedia('(max-width: 760px)').matches;
-  // Normal: editor vs viewer. Compare: both editors vs the differences panel.
+  // Normal: editor vs viewer. Compare and Schema: both editors vs the differences or errors panel.
   const [lo, hi, cur, prop] = comparing ? [0.4, 0.85, splitCmp, '--split-c'] : [0.2, 0.8, split, '--split'];
   const clamp = (r: number) => Math.min(hi, Math.max(lo, r));
   const set = (r: number) => document.documentElement.style.setProperty(prop, `${(clamp(r) * 100).toFixed(2)}%`);
@@ -1230,7 +1250,8 @@ export default function JsonTool({ preset, langs }: { preset?: EnginePreset; /**
   const fmtRef = useRef<HTMLDivElement>(null);
   const ed2Ref = useRef<HTMLDivElement>(null);
   const cmpRef = useRef<HTMLDivElement>(null);
-  const comparing = useUI((s) => s.settings.view === 'compare');
+  const schRef = useRef<HTMLDivElement>(null);
+  const comparing = useUI((s) => paired(s.settings.view));
   const empty = useUI((s) => s.empty);
 
   // Every [data-tip] in the tool, shown above panes, dialogs and fullscreen views (loaded once the page is idle).
@@ -1256,7 +1277,7 @@ export default function JsonTool({ preset, langs }: { preset?: EnginePreset; /**
 
   useEffect(() => {
     // A link to a landing page opens the linked documents instead of the page's sample.
-    const pagePreset = parseLink(location.hash) ? undefined : presetRef.current;
+    const pagePreset = linkIn(location.hash) ? undefined : presetRef.current;
     // Engine DOM code (folds, tooltips, value hints) reads the page's strings from here.
     setRuntime(tRef.current);
     const e = new Engine({
@@ -1303,9 +1324,10 @@ export default function JsonTool({ preset, langs }: { preset?: EnginePreset; /**
       <div className="panes">
         <EditorPane edRef={edRef} />
         <ComparePane edRef={ed2Ref} />
+        <SchemaColumn host={schRef} />
         <Splitter />
         <Watermark />
-        <ViewerPane treeRef={treeRef} tableRef={tableRef} graphRef={graphRef} codeRef={codeRef} fmtRef={fmtRef} cmpRef={cmpRef} />
+        <ViewerPane treeRef={treeRef} tableRef={tableRef} graphRef={graphRef} codeRef={codeRef} fmtRef={fmtRef} cmpRef={cmpRef} schRef={schRef} />
         <HugeHost />
       </div>
       <StatusBar langs={langs} />

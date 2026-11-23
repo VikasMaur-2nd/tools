@@ -43,9 +43,9 @@ const API = JSON.stringify({
 test('TARGETS are ordered and complete', () => {
   assert.deepEqual(
     TARGETS.map((t) => t.id),
-    ['typescript', 'zod', 'json-schema', 'csharp', 'dart', 'java', 'python', 'go', 'kotlin', 'swift', 'php', 'rust', 'protobuf', 'csv', 'xlsx', 'yaml', 'xml', 'toml', 'jsonl'],
+    ['typescript', 'zod', 'json-schema', 'csharp', 'dart', 'java', 'python', 'go', 'kotlin', 'swift', 'php', 'rust', 'protobuf', 'csv', 'xlsx', 'yaml', 'xml', 'toml', 'jsonl', 'flatten', 'unflatten'],
   );
-  assert.ok(TARGETS.every((t) => t.group === (['csv', 'xlsx', 'yaml', 'xml', 'toml', 'jsonl'].includes(t.id) ? 'Data' : 'Types')));
+  assert.ok(TARGETS.every((t) => t.group === (['csv', 'xlsx', 'yaml', 'xml', 'toml', 'jsonl', 'flatten', 'unflatten'].includes(t.id) ? 'Data' : 'Types')));
   // every target but CSV and Excel (xlsx.ts) has a converter
   for (const t of TARGETS) {
     if (t.id === 'csv' || t.id === 'xlsx') assert.throws(() => conv('1', t.id));

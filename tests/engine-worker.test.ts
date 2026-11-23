@@ -8,6 +8,7 @@ import ts from 'typescript';
 import { Doc } from '../lib/engine/doc';
 import { NO_VALUE, parse, type ParseResult } from '../lib/json/parser';
 import { diffResults } from './oracle/compare';
+import { paired } from '../lib/engine/store';
 
 /** A body's bytes, as File gives them (`stream`), from its text (a rejected text: the stream fails). */
 const streamOf = (text: string | Promise<string>) => new ReadableStream<Uint8Array>({
@@ -48,7 +49,7 @@ function session() {
     exports, performance, URL, console, AbortController, queueMicrotask, navigator: {},
     setTimeout: defer, clearTimeout: (id: number) => tasks.delete(id), window: { setTimeout: defer },
     require: (name: string) => {
-      if (name === './store') return { store: { get: () => state, set: (patch: object) => { Object.assign(state, patch); } } };
+      if (name === './store') return { paired, store: { get: () => state, set: (patch: object) => { Object.assign(state, patch); } } };
       if (name === './idle') return { soon: defer, idle: defer };
       if (name === '../analytics') return { reportError: (error: unknown, source: string) => errors.push({ error, source }) };
       if (name === '../analytics/load') return { noteLoad() {}, watchPastes() {} };

@@ -4,7 +4,9 @@ import type { ParseResult } from '../json/parser';
 import type { Seg } from '../json/path';
 
 export type Theme = 'system' | 'light' | 'dark';
-export type View = 'format' | 'tree' | 'table' | 'graph' | 'convert' | 'compare';
+export type View = 'format' | 'tree' | 'table' | 'graph' | 'convert' | 'compare' | 'schema';
+/** Compare and Schema: views with a second editor beside the input, whose result the viewer shows. */
+export const paired = (v: View) => v === 'compare' || v === 'schema';
 export type IndentId = '2' | '4' | 'tab';
 /** What the input is read as: JSON, or a format whose JSON the views show (lib/engine/source.ts). */
 export type SourceFormat = 'json' | 'yaml' | 'csv' | 'xml' | 'toml';
@@ -17,8 +19,8 @@ export interface Settings {
   theme: Theme;
   indent: IndentId;
   view: View;
-  /** The view to return to when Compare closes. */
-  prevView: Exclude<View, 'compare'>;
+  /** The view to return to when Compare or Schema closes. */
+  prevView: Exclude<View, 'compare' | 'schema'>;
   /** Pretty-print minified JSON when it is pasted into an empty editor. */
   autoFormat: boolean;
   /** Soft-wrap long lines in the editors and the code views. */
@@ -40,6 +42,19 @@ export interface Settings {
   /** CSV input: the first row names the columns (rows become objects), and unquoted numbers and booleans become JSON ones. */
   csvHeader: boolean;
   csvTypes: boolean;
+  /** Convert: flatten and unflatten's options (absent: the defaults, lib/convert/flat.ts FLAT_DEFAULTS). */
+  flat?: FlatSettings;
+}
+
+export interface FlatSettings {
+  /** Joins the keys of a path ('' while one is typed: "." is used). */
+  sep: string;
+  /** Array items as a[0], as a.0, or kept whole. */
+  arrays: 'bracket' | 'dot' | 'keep';
+  /** Backslash escapes for keys a path would misread. */
+  escape: boolean;
+  /** Levels flattened (0: all). */
+  depth: number;
 }
 
 /** A tool page's starting state. */
@@ -49,6 +64,8 @@ export interface EnginePreset {
   initialFileName?: string;
   /** What the sample is read as (default: what its file name says, else JSON). */
   input?: SourceFormat;
+  /** The Schema view's sample schema. */
+  schema?: string;
 }
 
 /** A JWT input: its algorithm and NumericDate claims (seconds), shown live (they age). */
@@ -169,7 +186,8 @@ export interface UIState {
   /** What the input is read as; for CSV, the separator chosen and the one detected (what `auto` reads with). */
   input: { format: SourceFormat; delimiter: CsvDelimiter; detected: string };
   fileName: string | null;
-  convert: { loading: boolean; error: string | null; lines: number; bytes: number };
+  /** `flat`: flatten and unflatten's note on the output (`warn`: it won't convert back as it is; `flip`: the other direction fits the input). */
+  convert: { loading: boolean; error: string | null; lines: number; bytes: number; flat?: { note: string; warn: boolean; flip: boolean } };
   /** Format view output: line count and the byte size of both variants; `tooLarge`: none could be made (see MAX_TEXT). */
   fmt: { lines: number; pretty: number; minified: number; escaped: number; tooLarge?: boolean };
   /** Wire sizes of the valid document: minified, then compressed by each codec the browser has. */
@@ -190,6 +208,11 @@ export interface UIState {
   toast: Toast | null;
   /** Huge-file mode's viewer, while a file too big for the editor is open (lib/huge): JsonTool renders it, handing it react-dom's createPortal. */
   huge: ((portal: Portal) => ReactNode) | null;
+  /**
+   * For the Schema view's editor (components/SchemaView.tsx): a page's sample schema, a schema to generate from the
+   * document, or a link's schema (its file name, and its draft and Check formats: lib/link.ts).
+   */
+  schemaIn: { seq: number; text?: string; sample?: boolean; generate?: boolean; name?: string | null; url?: string; draft?: string; formats?: boolean } | null;
 }
 
 export const DEFAULT_SETTINGS: Settings = {
@@ -241,6 +264,7 @@ const INITIAL: UIState = {
   dragging: false,
   toast: null,
   huge: null,
+  schemaIn: null,
 };
 
 type Listener = () => void;
