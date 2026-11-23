@@ -167,7 +167,8 @@ export default function IntegratePage() {
           pairs joined by <Part cls="lk-s">&amp;</Part>:
         </p>
         <Code lang="text" links>{`https://tools.vikasmaur.com/#a=<document>&view=tree
-https://tools.vikasmaur.com/#a=<original>&b=<modified>`}</Code>
+https://tools.vikasmaur.com/#a=<original>&b=<modified>
+https://tools.vikasmaur.com/#a=<document>&b=<schema>&view=schema`}</Code>
         <div className="table-wrap">
           <table>
             <thead>
@@ -180,15 +181,84 @@ https://tools.vikasmaur.com/#a=<original>&b=<modified>`}</Code>
               </tr>
               <tr>
                 <th scope="row"><Part cls="lk-k">b</Part></th>
-                <td>Optional. A second document in the same form. Two documents open in Compare.</td>
+                <td>
+                  Optional. A second document in the same form. Two documents open in Compare. With <Pair name="view" value="schema" />, it is
+                  instead the JSON Schema the document is validated against.
+                </td>
               </tr>
               <tr>
                 <th scope="row"><Part cls="lk-k">view</Part></th>
-                <td>Optional. <Part cls="lk-v">format</Part>, <Part cls="lk-v">tree</Part>, <Part cls="lk-v">table</Part>, <Part cls="lk-v">graph</Part>, <Part cls="lk-v">convert</Part> or <Part cls="lk-v">compare</Part>. Without it, readers keep the view they last used.</td>
+                <td>Optional. <Part cls="lk-v">format</Part>, <Part cls="lk-v">tree</Part>, <Part cls="lk-v">table</Part>, <Part cls="lk-v">graph</Part>, <Part cls="lk-v">convert</Part>, <Part cls="lk-v">compare</Part> or <Part cls="lk-v">schema</Part>. Without it, readers keep the view they last used.</td>
               </tr>
               <tr>
                 <th scope="row"><Part cls="lk-k">to</Part></th>
                 <td>Optional, with <Pair name="view" value="convert" />: {TARGETS.map((t, i) => <span key={t.id}>{i ? ', ' : ''}<Part cls="lk-v">{t.id}</Part></span>)}.</td>
+              </tr>
+              <tr>
+                <th scope="row"><Part cls="lk-k">sep</Part></th>
+                <td>
+                  Optional, with <Pair name="to" value="flatten" /> or <Pair name="to" value="unflatten" />: what joins the keys of a path, 1 to 8 characters
+                  with no digits, backslashes or brackets, percent-encoded. The default is a dot.
+                </td>
+              </tr>
+              <tr>
+                <th scope="row"><Part cls="lk-k">arrays</Part></th>
+                <td>Optional, with the same targets: array indexes as <Part cls="lk-v">bracket</Part> (a[0], the default), <Part cls="lk-v">dot</Part> (a.0) or <Part cls="lk-v">keep</Part> (arrays stay whole).</td>
+              </tr>
+              <tr>
+                <th scope="row"><Part cls="lk-k">depth</Part></th>
+                <td>Optional, with <Pair name="to" value="flatten" />: <Part cls="lk-v">1</Part>, <Part cls="lk-v">2</Part> or <Part cls="lk-v">3</Part> levels joined into keys. The default is all of them.</td>
+              </tr>
+              <tr>
+                <th scope="row"><Part cls="lk-k">escape</Part></th>
+                <td>
+                  Optional, with the same targets: <Part cls="lk-v">0</Part> keeps keys as written, without the backslashes that otherwise mark a dot or
+                  bracket inside a key. A link to flatten or unflatten opens with exactly these options, the defaults for those it leaves out, and
+                  readers keep their own for their next visit.
+                </td>
+              </tr>
+              <tr>
+                <th scope="row"><Part cls="lk-k">draft</Part></th>
+                <td>
+                  Optional, with a schema: the draft for a schema without <code>$schema</code>. <Part cls="lk-v">2020-12</Part> (the default),{' '}
+                  <Part cls="lk-v">2019-09</Part>, <Part cls="lk-v">draft-07</Part>, <Part cls="lk-v">draft-06</Part> or <Part cls="lk-v">draft-04</Part>.
+                </td>
+              </tr>
+              <tr>
+                <th scope="row"><Part cls="lk-k">formats</Part></th>
+                <td>Optional, with a schema: <Part cls="lk-v">1</Part> checks <code>format</code> (email, date-time, uri…), which is otherwise an annotation.</td>
+              </tr>
+              <tr>
+                <th scope="row"><Part cls="lk-k">in</Part></th>
+                <td>
+                  Optional. The format of <Part cls="lk-k">a</Part> when it isn&apos;t JSON: <Part cls="lk-v">yaml</Part>, <Part cls="lk-v">csv</Part>,{' '}
+                  <Part cls="lk-v">xml</Part> or <Part cls="lk-v">toml</Part>. The document opens as itself, in its own format in the input, and the
+                  views show its JSON. Without it, a document is read as JSON, or by its file name when it comes from a URL (.yaml, .csv, .tsv,
+                  .xml, .toml).
+                </td>
+              </tr>
+              <tr>
+                <th scope="row"><Part cls="lk-k">delimiter</Part></th>
+                <td>
+                  Optional, with <Pair name="in" value="csv" />: what separates the fields, <Part cls="lk-v">comma</Part>,{' '}
+                  <Part cls="lk-v">semicolon</Part>, <Part cls="lk-v">tab</Part> or <Part cls="lk-v">pipe</Part>. Without it, the separator is
+                  detected, or taken from a first line such as <code>sep=;</code> (as Excel writes it).
+                </td>
+              </tr>
+              <tr>
+                <th scope="row"><Part cls="lk-k">header</Part></th>
+                <td>
+                  Optional, with <Pair name="in" value="csv" />: <Part cls="lk-v">0</Part> when the first row is data, not column names: every row
+                  becomes an array. By default the first row names the columns and each row after it becomes an object.
+                </td>
+              </tr>
+              <tr>
+                <th scope="row"><Part cls="lk-k">types</Part></th>
+                <td>
+                  Optional, with <Pair name="in" value="csv" />: <Part cls="lk-v">0</Part> keeps every value a string. By default unquoted numbers,
+                  true and false become JSON numbers and booleans, and empty fields null. A CSV link opens with exactly these options, the
+                  defaults for those it leaves out, for that visit only: readers keep their own CSV settings for their next one.
+                </td>
               </tr>
             </tbody>
           </table>
@@ -239,7 +309,9 @@ https://tools.vikasmaur.com/#a=<original>&b=<modified>`}</Code>
         <script dangerouslySetInnerHTML={{ __html: CODE_LANG_SCRIPT }} />
         <CodeSnippet name="toolKumarLink" js={LINK_SNIPPET} ts={LINK_SNIPPET_TS} />
         <Code lang="javascript" links>{`const link = await toolKumarLink(response, { view: 'tree' });
-const diff = await toolKumarLink(before, { compare: after });`}</Code>
+const diff = await toolKumarLink(before, { compare: after });
+const checked = await toolKumarLink(response, { schema: userSchema });
+const sheet = await toolKumarLink(csvText, { in: 'csv', delimiter: 'semicolon' });`}</Code>
         <p>
           A link to a URL needs no compression: <LinkCode lang="javascript">{"'https://tools.vikasmaur.com/#a=' + encodeURIComponent(url)"}</LinkCode>. The reader&apos;s browser
           fetches it, so its server must allow cross-origin requests (CORS); public GitHub files and most public APIs do. In other languages:
@@ -271,7 +343,14 @@ link = "https://tools.vikasmaur.com/#a=" + base64.urlsafe_b64encode(raw).decode(
           <li>When Tool Kumar is ready, it tells your page with <code>{'{ toolkumar: "ready", version: 1 }'}</code>.</li>
           <li>
             Your page sends <code>{'{ toolkumar: "open", a, b, view, to }'}</code> to that tab, where <code>a</code> and <code>b</code> are the JSON
-            text.
+            text. With <code>to: &quot;flatten&quot;</code> or <code>&quot;unflatten&quot;</code> it may add <code>sep</code>, <code>arrays</code>,{' '}
+            <code>depth</code> (a number) and <code>escape</code> (a boolean), as for links.
+            With <code>{'view: "schema"'}</code>, <code>b</code> is the JSON Schema. With <code>in</code> (<code>&quot;yaml&quot;</code>,{' '}
+            <code>&quot;csv&quot;</code>, <code>&quot;xml&quot;</code> or <code>&quot;toml&quot;</code>), <code>a</code> is text in that format;
+            with <code>in: &quot;csv&quot;</code> it may add <code>delimiter</code> (<code>&quot;comma&quot;</code>,{' '}
+            <code>&quot;semicolon&quot;</code>, <code>&quot;tab&quot;</code> or <code>&quot;pipe&quot;</code>), and <code>header</code> and{' '}
+            <code>types</code> (booleans: <code>false</code> for <Pair name="header" value="0" /> and <Pair name="types" value="0" />),
+            also for that visit only.
           </li>
           <li>Tool Kumar opens it and answers <code>{'{ toolkumar: "opened" }'}</code>, or <code>{'{ toolkumar: "error", reason }'}</code>.</li>
         </ol>

@@ -462,3 +462,15 @@ test('a document replaced before its check is reported without a size or validit
   l.later();
   assert.deepEqual(l.sent.slice(2).map((e) => [e.source, e.bytes]), [['paste_button', undefined], ['file', 3]]);
 });
+
+test("the Schema view's fetch counts and its over-the-limit notice are kept out of session replay (review 2, finding 9)", () => {
+  const view = readFileSync(join(process.cwd(), 'components/SchemaView.tsx'), 'utf8');
+  for (const msg of ['Fetching {done} of {count}…', 'Up to {n} are fetched at a time.']) {
+    const uses = [...view.matchAll(new RegExp(`t\\('${msg.replace(/[.{}()]/g, '\\$&')}'`, 'g'))];
+    assert.ok(uses.length, msg);
+    // (The element it is written in: a private one.)
+    for (const u of uses) assert.match(view.slice(view.lastIndexOf('<', u.index), u.index), /^<span className=\{PRIVATE\}>/, msg);
+  }
+  // The live region says the same, through that element.
+  assert.match(view, /aria-live="polite">\s*\{fetching\}\s*<\/span>/);
+});

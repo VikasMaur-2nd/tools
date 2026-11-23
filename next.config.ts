@@ -78,6 +78,11 @@ const nextConfig: NextConfig = {
           { key: "Cache-Control", value: "public, max-age=86400, stale-while-revalidate=604800" },
         ],
       },
+      // The dictionaries localized pages load later (scripts/i18n-huge.mjs): named by their content, so immutable.
+      {
+        source: "/i18n/:file*",
+        headers: [{ key: "Cache-Control", value: "public, max-age=31536000, immutable" }],
+      },
       {
         // Always revalidate the service worker so new versions roll out immediately.
         source: "/sw.js",

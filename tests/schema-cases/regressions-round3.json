@@ -1,0 +1,67 @@
+{
+    "description": "Tool Kumar's own cases in the JSON-Schema-Test-Suite format: review round 3 (annotations that may not count only where they may). \"complete\" (Tool Kumar's): whether the check is complete, false for not fully checked.",
+    "tests": [
+        {
+            "description": "an item a branch that may not pass evaluated is unknown; one nothing evaluated is an error (round 3, finding 5)",
+            "compatibility": "=2020",
+            "schema": { "not": { "anyOf": [true, { "prefixItems": [{ "$ref": "https://example.test/missing" }] }], "unevaluatedItems": false } },
+            "tests": [
+                { "description": "item 1: unevaluated for sure, so not passes", "data": [0, 1], "valid": true, "complete": true },
+                { "description": "item 0 alone: unknown", "data": [0], "valid": false, "complete": false },
+                { "description": "no item: the anyOf passes for sure, not fails", "data": [], "valid": false, "complete": true }
+            ]
+        },
+        {
+            "description": "the same with the array form of items (round 3, finding 5)",
+            "compatibility": "2019,<=2019",
+            "schema": { "not": { "anyOf": [true, { "items": [{ "$ref": "https://example.test/missing" }] }], "unevaluatedItems": false } },
+            "tests": [
+                { "description": "item 1: unevaluated for sure", "data": [0, 1], "valid": true, "complete": true },
+                { "description": "item 0 alone: unknown", "data": [0], "valid": false, "complete": false }
+            ]
+        },
+        {
+            "description": "a property a branch that may not pass evaluated is unknown; one nothing evaluated is an error (round 3, finding 5)",
+            "compatibility": "2019",
+            "schema": { "not": { "anyOf": [true, { "properties": { "a": { "$ref": "https://example.test/missing" } } }], "unevaluatedProperties": false } },
+            "tests": [
+                { "description": "b: unevaluated for sure", "data": { "a": 1, "b": 2 }, "valid": true, "complete": true },
+                { "description": "a alone: unknown", "data": { "a": 1 }, "valid": false, "complete": false }
+            ]
+        },
+        {
+            "description": "patternProperties' names the same way (round 3, finding 5)",
+            "compatibility": "2019",
+            "schema": { "not": { "anyOf": [true, { "patternProperties": { "^a": { "$ref": "https://example.test/missing" } } }], "unevaluatedProperties": false } },
+            "tests": [
+                { "description": "b: unevaluated for sure", "data": { "a1": 1, "b": 2 }, "valid": true, "complete": true },
+                { "description": "a1 alone: unknown", "data": { "a1": 1 }, "valid": false, "complete": false }
+            ]
+        },
+        {
+            "description": "additionalProperties covers all the names left: all may be evaluated (round 3, finding 5)",
+            "compatibility": "2019",
+            "schema": { "not": { "anyOf": [true, { "properties": { "x": true }, "additionalProperties": { "$ref": "https://example.test/missing" } }], "unevaluatedProperties": false } },
+            "tests": [
+                { "description": "a and b: may be evaluated, unknown", "data": { "a": 1, "b": 2 }, "valid": false, "complete": false }
+            ]
+        },
+        {
+            "description": "items covers all the items left; contains only those it may match (round 3, finding 5)",
+            "compatibility": "=2020",
+            "schema": { "not": { "anyOf": [true, { "prefixItems": [true], "items": { "$ref": "https://example.test/missing" } }, { "contains": { "type": "string", "$ref": "https://example.test/missing" } }], "unevaluatedItems": false } },
+            "tests": [
+                { "description": "items may evaluate both: unknown", "data": [0, 1], "valid": false, "complete": false }
+            ]
+        },
+        {
+            "description": "contains: an item it can't match is unevaluated for sure (round 3, finding 5)",
+            "compatibility": "=2020",
+            "schema": { "not": { "anyOf": [true, { "contains": { "type": "string", "$ref": "https://example.test/missing" } }], "unevaluatedItems": false } },
+            "tests": [
+                { "description": "1 isn't a string, contains never matches it: unevaluated for sure", "data": [1], "valid": true, "complete": true },
+                { "description": "\"a\" may be matched: unknown", "data": ["a"], "valid": false, "complete": false }
+            ]
+        }
+    ]
+}

@@ -3,7 +3,7 @@
  * worker at once (its modules and Wasm load while the rest of huge mode's code does), then hands over to
  * ./open-rest.ts (the binary check, the source, the session and its viewer).
  */
-import { MAX_DOCUMENT } from '../link';
+import { MAX_DOCUMENT } from '../engine/rules';
 import type { InputSource } from '../analytics/events';
 import { reportError } from '../analytics';
 import { rt } from '../i18n/ui';

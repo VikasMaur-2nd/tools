@@ -1,0 +1,241 @@
+{
+    "description": "Tool Kumar's own cases in the JSON-Schema-Test-Suite format: review round 4 (what an undecided if, or another uncertain application, may evaluate: no more than it can). \"complete\" (Tool Kumar's): whether the check is complete, false for not fully checked.",
+    "tests": [
+        {
+            "description": "an undecided if may evaluate only what its condition can: another name is unevaluated for sure (round 4, finding 7)",
+            "compatibility": "2019",
+            "schema": {
+                "not": {
+                    "if": {
+                        "properties": {
+                            "a": true
+                        },
+                        "not": {
+                            "$ref": "https://example.test/missing"
+                        }
+                    },
+                    "unevaluatedProperties": false
+                }
+            },
+            "tests": [
+                {
+                    "description": "b: unevaluated for sure, so not passes",
+                    "data": {
+                        "a": 0,
+                        "b": 0
+                    },
+                    "valid": true,
+                    "complete": true
+                },
+                {
+                    "description": "a alone: may be evaluated by the condition, unknown",
+                    "data": {
+                        "a": 0
+                    },
+                    "valid": false,
+                    "complete": false
+                }
+            ]
+        },
+        {
+            "description": "an undecided if: each branch counts for what it may evaluate (round 4, finding 7)",
+            "compatibility": "2019",
+            "schema": {
+                "not": {
+                    "if": {
+                        "properties": {
+                            "a": true
+                        },
+                        "not": {
+                            "$ref": "https://example.test/missing"
+                        }
+                    },
+                    "then": {
+                        "properties": {
+                            "c": true
+                        }
+                    },
+                    "else": {
+                        "properties": {
+                            "d": true
+                        }
+                    },
+                    "unevaluatedProperties": false
+                }
+            },
+            "tests": [
+                {
+                    "description": "b: neither branch nor the condition evaluates it",
+                    "data": {
+                        "a": 0,
+                        "b": 0
+                    },
+                    "valid": true,
+                    "complete": true
+                },
+                {
+                    "description": "c: then may evaluate it",
+                    "data": {
+                        "a": 0,
+                        "c": 0
+                    },
+                    "valid": false,
+                    "complete": false
+                },
+                {
+                    "description": "d: else may evaluate it",
+                    "data": {
+                        "a": 0,
+                        "d": 0
+                    },
+                    "valid": false,
+                    "complete": false
+                }
+            ]
+        },
+        {
+            "description": "the items an undecided if may evaluate (round 4, finding 7)",
+            "compatibility": "=2020",
+            "schema": {
+                "not": {
+                    "if": {
+                        "prefixItems": [
+                            true
+                        ],
+                        "not": {
+                            "$ref": "https://example.test/missing"
+                        }
+                    },
+                    "unevaluatedItems": false
+                }
+            },
+            "tests": [
+                {
+                    "description": "item 1: unevaluated for sure",
+                    "data": [
+                        0,
+                        1
+                    ],
+                    "valid": true,
+                    "complete": true
+                },
+                {
+                    "description": "item 0 alone: unknown",
+                    "data": [
+                        0
+                    ],
+                    "valid": false,
+                    "complete": false
+                }
+            ]
+        },
+        {
+            "description": "dependentSchemas and $ref to a schema with a part that can't be applied count for what it may evaluate (round 4, finding 7)",
+            "compatibility": "2019",
+            "schema": {
+                "$defs": {
+                    "x": {
+                        "properties": {
+                            "x": true
+                        },
+                        "not": {
+                            "$ref": "https://example.test/missing"
+                        }
+                    }
+                },
+                "not": {
+                    "dependentSchemas": {
+                        "a": {
+                            "properties": {
+                                "a": true
+                            },
+                            "not": {
+                                "$ref": "https://example.test/missing"
+                            }
+                        }
+                    },
+                    "$ref": "#/$defs/x",
+                    "unevaluatedProperties": false
+                }
+            },
+            "tests": [
+                {
+                    "description": "b: unevaluated for sure",
+                    "data": {
+                        "a": 0,
+                        "x": 0,
+                        "b": 0
+                    },
+                    "valid": true,
+                    "complete": true
+                },
+                {
+                    "description": "a and x: may be evaluated",
+                    "data": {
+                        "a": 0,
+                        "x": 0
+                    },
+                    "valid": false,
+                    "complete": false
+                }
+            ]
+        },
+        {
+            "description": "allOf with a member that isn't a schema: it may evaluate anything (round 4, finding 7)",
+            "compatibility": "2019",
+            "schema": {
+                "not": {
+                    "allOf": [
+                        42,
+                        {
+                            "properties": {
+                                "a": true
+                            }
+                        }
+                    ],
+                    "unevaluatedProperties": false
+                }
+            },
+            "tests": [
+                {
+                    "description": "b may be evaluated by the member that isn't a schema",
+                    "data": {
+                        "a": 0,
+                        "b": 0
+                    },
+                    "valid": false,
+                    "complete": false
+                }
+            ]
+        },
+        {
+            "description": "not keeps no annotations: what it evaluated is unevaluated for sure (round 4, finding 7)",
+            "compatibility": "2019",
+            "schema": {
+                "not": {
+                    "not": {
+                        "properties": {
+                            "a": {
+                                "$ref": "https://example.test/missing"
+                            }
+                        },
+                        "required": [
+                            "z"
+                        ]
+                    },
+                    "unevaluatedProperties": false
+                }
+            },
+            "tests": [
+                {
+                    "description": "a: unevaluated for sure",
+                    "data": {
+                        "a": 0
+                    },
+                    "valid": true,
+                    "complete": true
+                }
+            ]
+        }
+    ]
+}

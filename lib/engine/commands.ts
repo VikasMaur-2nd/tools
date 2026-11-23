@@ -84,6 +84,17 @@ export const COMMANDS: Command[] = [
   { id: 'graph-svg', group: 'File', title: 'Download graph as SVG', run: (e) => e.downloadGraph('svg') },
   { id: 'convert', group: 'View', title: 'Convert to TypeScript, Zod, Go, YAML, CSV…', keys: 'Alt+5', terms: 'json to typescript interface type schema code generate class struct', active: (s) => s.settings.view === 'convert', run: (e) => e.setView('convert') },
   { id: 'compare', group: 'View', title: 'Compare (diff) two JSON documents', keys: 'Alt+6', terms: 'diff compare difference', active: (s) => s.settings.view === 'compare', run: (e) => e.setView('compare') },
+  { id: 'schema', group: 'View', title: 'Validate against a JSON Schema', keys: 'Alt+7', terms: 'json schema validator validate check draft 2020-12 required type', active: (s) => s.settings.view === 'schema', run: (e) => e.setView('schema') },
+  {
+    id: 'schema-generate',
+    group: 'Convert',
+    title: 'Generate a JSON Schema and validate against it',
+    terms: 'json schema validator infer generator',
+    run: (e) => {
+      store.set({ schemaIn: { seq: Date.now(), generate: true } });
+      e.setView('schema');
+    },
+  },
   { id: 'excel', group: 'File', title: 'Export to Excel (.xlsx)', terms: 'xlsx spreadsheet download', run: (e) => void e.exportExcel() },
   ...TARGETS.map(
     (t): Command => ({
@@ -106,6 +117,7 @@ export const COMMANDS: Command[] = [
   { id: 'fold-input', group: 'View', title: 'Collapse all in input', terms: 'fold editor', run: (e) => e.foldEditor(1, 1) },
   { id: 'unfold-input', group: 'View', title: 'Expand all in input', terms: 'unfold editor', run: (e) => e.foldEditor(1, 0) },
   { id: 'close-compare', group: 'View', title: 'Close compare', terms: 'exit diff', run: (e) => e.closeCompare() },
+  { id: 'close-schema', group: 'View', title: 'Close schema', terms: 'exit validator', run: (e) => store.get().settings.view === 'schema' && e.setView(store.get().settings.prevView) },
   { id: 'focus-tree', group: 'View', title: 'Focus tree', keys: 'Esc', run: (e) => e.focusTree() },
   { id: 'focus-editor', group: 'View', title: 'Focus editor', run: (e) => e.focusEditor() },
 

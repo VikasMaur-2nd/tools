@@ -29,14 +29,25 @@ export const TARGETS: TargetInfo[] = [
   { id: 'xml', label: 'XML', group: 'Data', ext: 'xml', lang: 'xml', mime: 'application/xml' },
   { id: 'toml', label: 'TOML', group: 'Data', ext: 'toml', lang: 'toml', mime: 'text/plain' },
   { id: 'jsonl', label: 'JSON Lines (NDJSON)', group: 'Data', ext: 'jsonl', lang: 'json', mime: 'application/x-ndjson' },
+  { id: 'flatten', label: 'Flat JSON (flatten)', group: 'Data', ext: 'flat.json', lang: 'json', mime: 'application/json' },
+  { id: 'unflatten', label: 'Nested JSON (unflatten)', group: 'Data', ext: 'nested.json', lang: 'json', mime: 'application/json' },
 ];
+
+/** Flatten and unflatten: JSON both ways, sharing their options (Settings.flat). */
+export const isFlat = (id: string) => id.endsWith('flatten');
 
 export const targetInfo = (id: string) => TARGETS.find((t) => t.id === id) ?? TARGETS[0];
 
-/** The file a conversion downloads as, for a document named `base` (no extension). */
-export function convertFileName(info: TargetInfo, base: string, rootName: string): string {
+/**
+ * The file a conversion downloads as, for a document named `base` (no extension). `lines`: the document is JSON Lines,
+ * and flatten's and unflatten's output for it is JSON Lines too, a .jsonl file (see convertMime).
+ */
+export function convertFileName(info: TargetInfo, base: string, rootName: string, lines = false): string {
   // A public Java class must live in a file of the same name.
   if (info.id === 'java') return `${rootName || 'Root'}.java`;
   if (info.id === 'zod') return `${base}.schema.ts`;
-  return `${base}.${info.ext}`;
+  return `${base}.${info.ext}${lines && isFlat(info.id) ? 'l' : ''}`;
 }
+
+/** The type of the file a conversion downloads as (`lines`: see convertFileName). */
+export const convertMime = (info: TargetInfo, lines = false) => (lines && isFlat(info.id) ? 'application/x-ndjson' : info.mime);

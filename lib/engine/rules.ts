@@ -6,6 +6,18 @@ import type { SourceFormat } from './store';
 /** What an input can be read as (lib/engine/source.ts reads the others than JSON). */
 export const SOURCE_FORMATS: readonly SourceFormat[] = ['json', 'yaml', 'csv', 'xml', 'toml'];
 
+/**
+ * The largest document a tab opens, however it arrives: a file, a link or a handoff (lib/link.ts re-exports it, and
+ * says more). Here, with the rules the first load needs: lib/link.ts itself loads when a link is opened or made.
+ */
+export const MAX_DOCUMENT = 300 * 1024 * 1024;
+
+/** A fragment that asks for something (lib/link.ts reads it): a handoff, or documents (`a=` or `b=`). */
+export function linkIn(hash: string): boolean {
+  const h = hash.startsWith('#') ? hash.slice(1) : hash;
+  return h === 'handoff' || /(?:^|&)[ab]=/.test(h);
+}
+
 /** A stored or linked format name, or JSON. */
 export const formatOf = (v: unknown): SourceFormat => SOURCE_FORMATS.find((f) => f === v) ?? 'json';
 

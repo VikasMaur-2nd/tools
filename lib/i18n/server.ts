@@ -10,7 +10,8 @@ import { SITE } from '@/lib/site';
 import { TOOL_PAGES, TOOL_PAGE_BY_SLUG, type ToolPage } from '@/lib/tool-pages';
 import { LOCALES, localeInfo, localePath, type Locale, type SiteLocale } from './locales';
 import { fill, type Params, type UiDict } from './ui';
-import { pageDict } from './client-dict';
+import { pageDict, type StringFiles } from './client-dict';
+import FILES from './strings-files.json';
 import en from './en/ui.json';
 import esUi from './es/ui.json';
 import ptUi from './pt/ui.json';
@@ -101,6 +102,14 @@ export function serverT(locale: SiteLocale) {
 export function clientUi(locale: SiteLocale): UiDict | undefined {
   if (locale === 'en') return undefined;
   return memo(`client:${locale}`, () => pageDict(EN_UI, PSEUDO === locale ? strings(locale) : CATALOG[locale].ui));
+}
+
+/**
+ * The dictionaries a localized page loads later (huge mode's, the lazy features'): its own language's files only
+ * (scripts/i18n-huge.mjs writes them and the list), handed to its translator. English pages have none.
+ */
+export function stringFiles(locale: SiteLocale): StringFiles | undefined {
+  return locale === 'en' ? undefined : (FILES as Record<string, StringFiles>)[locale];
 }
 
 /** The error boundary's strings for a localized root layout. */

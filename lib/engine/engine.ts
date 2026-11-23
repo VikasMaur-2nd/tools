@@ -13,20 +13,22 @@ import type { GraphExport, GraphViewApi } from '../graph/types';
 import { CodeView } from './codeview';
 import { escapeHtml, highlightLine } from './highlight';
 import type { FindResult, LineHighlighter } from './codeview';
-import { convertFileName, targetInfo } from './targets';
-import { DEFAULT_SETTINGS, store, type ContextMenu, type CsvDelimiter, type DiffMenu, type Hint, type IndentId, type MenuArea, type Settings, type Sizes, type SourceFormat, type Status, type EnginePreset, type Theme, type View } from './store';
+import { convertFileName, convertMime, isFlat, targetInfo } from './targets';
+import { DEFAULT_SETTINGS, paired, store, type ContextMenu, type CsvDelimiter, type DiffMenu, type Hint, type IndentId, type MenuArea, type Settings, type Sizes, type SourceFormat, type Status, type EnginePreset, type Theme, type View } from './store';
 import type { JwtInput, readJwt } from '../json/jwt';
 import type { SourceReply, SourceRequest } from './source.worker';
+import type { Place } from '../convert/import';
 import { rt } from '../i18n/ui';
 import { idle, soon } from './idle';
 import { Doc, lf } from './doc';
-import { formatOf, formatOfName, holdsEscapedJson, holdsJson, jsonLines, persistenceAfterChange, persistenceAfterLoad, plainJson, unescapeText } from './rules';
+import { MAX_DOCUMENT, formatOf, formatOfName, holdsEscapedJson, holdsJson, jsonLines, linkIn, persistenceAfterChange, persistenceAfterLoad, plainJson, unescapeText } from './rules';
 import { PRIVATE, reportError, track } from '../analytics';
 import { noteLoad, watchPastes } from '../analytics/load';
 import { getDiffMenu, getEngine } from './instance';
 import type { InputSource } from '../analytics/events';
 import type { SnippetFormat } from '../badge';
-import { HANDOFF_VERSION, LINK_DOCUMENT, LinkTooLarge, MAX_DOCUMENT, PASTED_LINK, decodeDoc, linkReach, linkHash, parseLink, readHandoff, type HandoffReply, type LinkDoc, type LinkRequest } from '../link';
+// (Links' code, lib/link.ts, loads when a link is opened or made: not part of the first load.)
+import type { HandoffReply, LinkDoc, LinkRequest } from '../link';
 import type { HugeHook } from '../huge/session';
 import { TallScroll } from './tall';
 
@@ -120,7 +122,7 @@ function loadSettings(): Settings {
     out.splitCmp = Math.min(0.85, Math.max(0.4, Number(out.splitCmp) || 0.66));
     if (!['2', '4', 'tab'].includes(out.indent)) out.indent = '2';
     if (!['system', 'light', 'dark'].includes(out.theme)) out.theme = 'system';
-    if (!['format', 'tree', 'table', 'graph', 'convert', 'compare'].includes(out.view)) out.view = 'format';
+    if (!['format', 'tree', 'table', 'graph', 'convert', 'compare', 'schema'].includes(out.view)) out.view = 'format';
     if (!['format', 'tree', 'table', 'graph', 'convert'].includes(out.prevView)) out.prevView = 'format';
     out.minify = !!out.minify;
     out.sortKeys = !!out.sortKeys;
@@ -308,6 +310,9 @@ const loadPack = () => (packLoad ??= import('../json/pack').then((m) => (pack = 
 let swStarted = false;
 let updateWaiting = false;
 
+/** Document generations, across engines (a page Next.js keeps and shows again gets a new one): see Engine.docGen. */
+let docs = 0;
+
 export class Engine {
   readonly ed: Editor;
   /** Compare: the modified document. */
@@ -354,6 +359,10 @@ export class Engine {
   private converted: string | null = null;
   /** The reader for other formats (./source.ts): loaded once an input is in one. */
   private srcMod: SourceModule | null = null;
+  /** The reader for other formats, once loaded (the Schema view reads such an input again for its errors' places). */
+  get source() {
+    return this.srcMod;
+  }
   private srcLoad: Promise<void> | null = null;
   /** An analysis waits for that reader (see waitForSource). */
   private srcWait = false;
@@ -369,6 +378,8 @@ export class Engine {
   private srcSeq = 0;
   /** The conversion the worker is making: of that editor version, read that way (`key`, see sourceOptions). */
   private srcWanted: { seq: number; ver: object; key: string } | null = null;
+  /** Gets the worker's places replies (lib/schema/places.ts asks), and null when it fails or is stopped: they won't come then. */
+  placesIn?: ((d: { seq: number; places: Place[] | null } | null) => void) | null;
   /** The last conversion the worker made, and that its JSON was parsed (analyze uses it for that version and reading). */
   private srcDone: { ver: object; key: string; conv: { json: string } | { error: string; p: number } } | null = null;
   private sel: JNode | null = null;
@@ -525,8 +536,7 @@ export class Engine {
     this.viewSeq++;
     this.dropGraphWaiters();
     clearTimeout(this.sizeTimer);
-    this.requests[1]?.abort();
-    this.requests[2]?.abort();
+    for (const k of [1, 2, 3] as const) this.requests[k]?.abort();
     window.removeEventListener('load', this.warmSoon);
     clearTimeout(this.warmTimer);
     if (this.persistIdle) cancelIdleCallback(this.persistIdle);
@@ -579,8 +589,7 @@ export class Engine {
     if (this.dead) return;
     // (A load's text arriving in the editor is that load's document, not a new one: see finishLoad.)
     if (!this.landing) {
-      this.docGen++;
-      this.supersede();
+      this.newDoc();
       // The file read no longer is the editor's text: the analysis worker is sent the text (see postDocument).
       if (this.fromFile && this.fromFile.doc !== this.ed.version) this.fromFile = null;
     }
@@ -766,7 +775,12 @@ export class Engine {
         },
         () => {
           this.srcWait = false;
-          if (!this.dead && !this.srcMod && this.inFmt !== 'json') store.set({ status: { kind: 'error', msg: 'Conversion failed', p: 0, line: 1, col: 1, src: this.inFmt } });
+          if (this.dead || this.srcMod || this.inFmt === 'json') return;
+          store.set({ status: { kind: 'error', msg: 'Conversion failed', p: 0, line: 1, col: 1, src: this.inFmt } });
+          // (Read as far as it can be: not at all. The Schema view says so rather than wait: see leftDoc.)
+          this.jwt = this.converted = null;
+          this.readGen = this.docGen;
+          if (paired(this.settings.view)) this.docWatch?.(this.leftDoc());
         },
       );
     }
@@ -854,16 +868,17 @@ export class Engine {
   }
 
   /** The worker for big inputs in another format (null when it can't start: they convert here). */
-  private sourceWorker(): Worker | null {
+  sourceWorker(): Worker | null {
     if (this.dead) return null;
     if (this.srcWorker !== undefined) return this.srcWorker;
     try {
       const w = new Worker(new URL('./source.worker.ts', import.meta.url));
-      w.onmessage = (e: MessageEvent<SourceReply>) => this.sourceConverted(e.data);
+      w.onmessage = (e: MessageEvent<SourceReply>) => ('places' in e.data ? this.placesIn?.(e.data) : this.sourceConverted(e.data));
       w.onerror = (e) => {
         // (It couldn't load, offline before it was ever cached say: converted here from now on.)
         e.preventDefault();
         w.terminate();
+        this.placesIn?.(null);
         this.srcWorker = null;
         this.srcBusy = false;
         if (this.srcWanted && !this.dead) {
@@ -895,6 +910,7 @@ export class Engine {
     // A conversion of an older text or reading still under way is stopped, not waited out (seconds at a few MB).
     if (this.srcBusy) {
       w.terminate();
+      this.placesIn?.(null);
       this.srcWorker = undefined;
       this.srcBusy = false;
       w = this.sourceWorker();
@@ -913,7 +929,7 @@ export class Engine {
   }
 
   /** The worker's conversion: its JSON is parsed here in short steps, then analysed (dropped if the input changed meanwhile). */
-  private sourceConverted(d: SourceReply) {
+  private sourceConverted(d: Exclude<SourceReply, { places: unknown }>) {
     this.srcBusy = false;
     const want = this.srcWanted;
     if (this.dead || !want || d.seq !== want.seq) return;
@@ -969,6 +985,8 @@ export class Engine {
   /** Publish analysis; a Format-only result can retain its packed tree until needed. */
   analyze(parsed?: ParseResult, metrics?: DocumentMetrics, lazy = false) {
     if (this.waitForJwt() || this.waitForSource()) return;
+    // (This document is read from here on, as whatever it is: see leftDoc.)
+    this.readGen = this.docGen;
     // (Outputs asked for meanwhile are made once this analysis has published: see whenAnalysed.)
     if (this.analysed.length) queueMicrotask(() => { for (const f of this.analysed.splice(0)) f(); });
     if (!lazy) this.packed = null;
@@ -1261,6 +1279,10 @@ export class Engine {
 
   /** The document was just loaded whole (file, paste, URL): no typing to wait out. */
   private loaded = false;
+  /** The Schema view's watch on the document (components/SchemaView.tsx): null at each new document (newDoc), then the document read (leftDoc). */
+  docWatch: ((doc: { text: string | null; id: number } | null) => void) | null = null;
+  /** The document generation last read (analyze: see leftDoc). */
+  private readGen = -1;
 
   /** Keeps the secondary views (convert, compare) in step with the document. */
   private afterDoc() {
@@ -1269,7 +1291,22 @@ export class Engine {
     this.loaded = false;
     if (v === 'format') this.scheduleFormat(now ? 0 : this.ed.length > 1_000_000 ? 250 : 60);
     else if (v === 'convert') this.scheduleConvert(now ? 0 : 150);
-    else if (v === 'compare') store.set({ docText: this.compareLeft() });
+    else if (paired(v)) {
+      store.set({ docText: this.compareLeft() });
+      this.docWatch?.(this.leftDoc());
+    }
+  }
+
+  /**
+   * The document as the Schema view validates it, with which document it is (docId): the input, or the JSON of a
+   * conversion or of a JWT (decoded); null text when the input can't be read as its format (the view says so). Id -1
+   * while it isn't read yet: it comes once it is (afterDoc).
+   */
+  leftDoc(): { text: string | null; id: number } {
+    if (this.readGen !== this.docGen) return { text: null, id: -1 };
+    if (this.jwt) return { text: this.jwt.json, id: this.docGen };
+    if (this.inFmt !== 'json' && this.converted === null && !this.ed.blank) return { text: null, id: this.docGen };
+    return { text: this.compareLeft(), id: this.docGen };
   }
 
   /** What Compare diffs as the original: the input, or the JSON it converts to when it is in another format. */
@@ -1571,8 +1608,7 @@ export class Engine {
       this.ed.setColors(null);
     }
     // (What was made for the other reading of the same text isn't this one's: see formatCurrent.)
-    this.docGen++;
-    this.supersede();
+    this.newDoc();
     this.loadSeq++;
     this.progressStatus = null;
     this.workerParse = null;
@@ -1638,8 +1674,7 @@ export class Engine {
     this.publishInput();
     if (this.inFmt !== 'csv') return;
     // (The same text, read another way: what was made for the reading before isn't this one's.)
-    this.docGen++;
-    this.supersede();
+    this.newDoc();
     this.fmtKey = '';
     this.fmtSrcVer = null;
     this.srcSeq++;
@@ -1747,14 +1782,13 @@ export class Engine {
    * `format`: what the document is read as (default: what its file name says; a document without one, pasted, is read
    * as the one before it was). Undo brings back the one before with the document before.
    */
-  load(text: string, name: string | null, persist = true, outputFirst = false, file?: File, format: SourceFormat = name ? formatOfName(name) : this.inFmt) {
+  load(text: string, name: string | null, persist = true, outputFirst = false, file?: File, format: SourceFormat = name ? formatOfName(name) : this.inFmt, delimiter?: CsvDelimiter) {
     // (A document in the editor: huge mode's file goes.)
     this.huge?.close();
     // Line ends as the editor keeps them, before anything else reads the text: a tree's offsets (from a
     // worker, over this text) must match the editor's, or values and positions shift a character a line.
     text = lf(text);
-    this.docGen++;
-    this.supersede();
+    this.newDoc();
     this.fromFile = file ? { file, text, doc: null } : null;
     this.pendingLoad = null;
     this.releaseWorkerDocuments();
@@ -1766,8 +1800,8 @@ export class Engine {
     store.set({ fileName: name, sizes: null, stats: null });
     const names: [string | null, string | null] = [this.edName, name];
     const formats: [SourceFormat, SourceFormat] = [this.inFmt, format];
-    // (A new document: its CSV separator is detected again, a .tsv file's is a tab.)
-    this.csvDelim = /\.tsv$/i.test(name ?? '') ? '\t' : 'auto';
+    // (A new document: its CSV separator is detected again, a .tsv file's is a tab, a link's is the one it names.)
+    this.csvDelim = delimiter ?? (/\.tsv$/i.test(name ?? '') ? '\t' : 'auto');
     if (format !== this.inFmt) this.setInputFormat(format, false);
     else this.publishInput();
     if (text.length >= STEPS_MIN) this.startProgress();
@@ -1788,9 +1822,24 @@ export class Engine {
   private fromFile: { file: File; text?: string; doc: Doc | null } | null = null;
   /**
    * Bumped by each new document and each change to it, a load's arriving in the editor aside (see landing): a copy
-   * or download waiting for an output is for the document of its generation (see Waiting).
+   * or download waiting for an output is for the document of its generation (see Waiting). Only newDoc bumps it.
    */
-  private docGen = 0;
+  private docGen = ++docs;
+
+  /** What the document is (see docGen): the Schema view checks a reply is for the document still there. */
+  get docId() {
+    return this.docGen;
+  }
+
+  /**
+   * The document is another one, or another reading of it (an edit, a load, another input format, CSV options): what
+   * was made for the one before isn't this one's, and the Schema view is told at once (docWatch).
+   */
+  private newDoc() {
+    this.docGen = ++docs;
+    this.supersede();
+    this.docWatch?.(null);
+  }
   /** A load's text is going into the editor (see finishLoad): its change is that load's. */
   private landing = false;
 
@@ -2340,14 +2389,19 @@ export class Engine {
   }
 
   /**
-   * The newest document asked for in each editor (1: the input, 2: Compare's) by a file, a link, a URL or
-   * the clipboard: a newer request, Clear, or typing or pasting in that editor aborts it (a download stops),
-   * so one that arrives late is dropped instead of replacing a newer one, and says nothing. destroy() aborts both.
+   * The newest document asked for in each editor (1: the input, 2: Compare's, 3: the Schema view's schema) by a file, a
+   * link, a URL or the clipboard: a newer request, Clear, or typing or pasting in that editor aborts it (a download
+   * stops), so one that arrives late is dropped instead of replacing a newer one, and says nothing. destroy() aborts them.
    */
-  private requests: Record<1 | 2, AbortController | null> = { 1: null, 2: null };
+  private requests: Record<1 | 2 | 3, AbortController | null> = { 1: null, 2: null, 3: null };
+
+  /** The Schema view's schema changed (typed, opened, pasted, generated): a schema a link brings is older (see requests). */
+  schemaChanged() {
+    this.requests[3]?.abort();
+  }
 
   /** A new request for a document in `editors` (see requests): its signal aborts once it is superseded. */
-  private request(...editors: (1 | 2)[]): AbortSignal {
+  private request(...editors: (1 | 2 | 3)[]): AbortSignal {
     const c = new AbortController();
     for (const k of editors) {
       this.requests[k]?.abort();
@@ -2357,9 +2411,9 @@ export class Engine {
     return c.signal;
   }
 
-  /** The request for what a link or a handoff asks for: the editors it fills. */
-  private requestFor(r: { a?: unknown; b?: unknown }) {
-    return this.request(...(r.a ? [1 as const] : []), ...(r.b ? [2 as const] : []));
+  /** The request for what a link or a handoff asks for: the editors it fills (with the Schema view, b is the schema). */
+  private requestFor(r: { a?: unknown; b?: unknown; view?: unknown }) {
+    return this.request(...(r.a ? [1 as const] : []), ...(r.b ? [r.view === 'schema' ? (3 as const) : (2 as const)] : []));
   }
 
   openFile(target: 1 | 2 = 1) {
@@ -2715,8 +2769,8 @@ export class Engine {
    */
   async share(as: SnippetFormat = 'link') {
     try {
-      // (The button's markup loads meanwhile: shared rarely, it isn't part of the first load.)
-      const [link, { snippet }] = await Promise.all([this.shareUrl(), import('../badge')]);
+      // (The button's markup loads meanwhile: shared rarely, it isn't part of the first load. So is links' code.)
+      const [link, { snippet }, { linkReach }] = await Promise.all([this.shareUrl(), import('../badge'), import('../link')]);
       if (!link) return this.toast('Nothing to share yet', 'info');
       const { url, comparing } = link;
       track('feature_used', { feature: comparing ? 'share_compare' : 'share_link', value: as });
@@ -2747,45 +2801,68 @@ export class Engine {
     }
   }
 
+  /** The Schema view's schema and options, for a link (components/SchemaView.tsx sets it while the view is on the page). */
+  schemaShare: (() => { text: string; draft?: string; formats?: boolean }) | null = null;
+
   /** The link `share` makes (null: nothing to share). Rejects where the browser can't compress. */
   async shareUrl(): Promise<{ url: string; comparing: boolean } | null> {
     this.flushLoad();
     const comparing = this.settings.view === 'compare';
+    // (From the Schema view, b is its schema: lib/link.ts.)
+    const schema = this.settings.view === 'schema' ? this.schemaShare?.() : undefined;
     const a = this.ed.text;
-    const b = comparing ? this.ed2.text : '';
+    const b = comparing ? this.ed2.text : (schema?.text ?? '');
     if (!a.trim() && !b.trim()) return null;
     // Valid JSON travels minified (a shorter link) and opens formatted; anything else as typed.
     const r = this.fresh();
     const rb = b.trim() ? parse(b) : null;
     const compact = (text: string, r: ParseResult | null) => (r?.root && !r.error && !r.issues.length ? formatDoc(text, r, '') : text);
-    // (Another format travels as typed, and says what it is.)
+    // (Another format travels as typed, and says what it is, and CSV how it reads.)
     const source = this.inFmt !== 'json';
-    const hash = await linkHash({
+    const s = this.settings;
+    // The whole request now, as the page is at the click: nothing may change it while the link's code loads.
+    const req: LinkRequest = {
       a: a.trim() ? { text: this.jwt ? a.trim() : source ? a : compact(a, r) } : undefined,
       b: rb ? { text: compact(b, rb) } : undefined,
-      view: this.settings.view,
-      to: this.settings.target,
+      view: s.view,
+      to: s.target,
       in: this.inFmt !== 'json' ? this.inFmt : undefined,
-    });
-    return { url: `${location.origin}/${hash}`, comparing };
+      flat: s.flat,
+      draft: schema?.draft,
+      formats: schema?.formats,
+      csv: this.inFmt === 'csv' ? { delimiter: this.csvDelim, header: s.csvHeader, types: s.csvTypes } : undefined,
+    };
+    const { linkHash } = await import('../link');
+    return { url: `${location.origin}/${await linkHash(req)}`, comparing };
   }
 
   /** Opens what a link's fragment asks for (lib/link.ts), then takes it out of the address bar. */
   private openLink = async () => {
-    const link = parseLink(location.hash);
-    if (!link) return;
+    const hash = location.hash;
+    if (!linkIn(hash)) return;
+    // The request for the editors it fills, before its code loads: typing, a file or a newer link meanwhile wins.
+    const has = (pair: string) => new RegExp(`(?:^|[#&])${pair}(?:&|$)`).test(hash);
+    const a = has('a=[^&]*');
+    const b = has('b=[^&]*');
+    const first = a || b ? this.requestFor({ a, b, view: has('view=schema') && 'schema' }) : undefined;
+    // Links' code loads now. (A newer link is the newer call's. If the code can't load, the link stays in the
+    // address bar, for a reload.)
+    const L = await import('../link').catch(() => null);
+    if (this.dead || location.hash !== hash) return;
+    if (!L) return this.toast("Couldn't open the link. Check your connection, then reload the page.", 'err');
+    const { decodeDoc, LinkTooLarge, LINK_DOCUMENT } = L;
+    const link = L.parseLink(hash)!;
     // Exactly as long as Chrome's and Edge's address bar keeps of a paste: the rest of it was dropped (lib/link.ts).
-    const cut = location.href.length === PASTED_LINK;
+    const cut = location.href.length === L.PASTED_LINK;
     history.replaceState(null, '', location.pathname + location.search);
-    if (link === 'handoff') return this.awaitHandoff();
+    if (link === 'handoff') return this.awaitHandoff(L);
     const broken = () =>
       cut
         ? this.toast('That link was cut short: Chrome and Edge keep only the first 500 KB of a link pasted into the address bar. Open it by clicking it instead.', 'err', undefined, 9000)
         : this.toast('That share link is broken or incomplete', 'err');
     if (link === 'broken') return broken();
     // A document past LINK_DOCUMENT opens only when asked (a small link can hold more than a tab can).
-    const open = async (max: number) => {
-      const signal = this.requestFor(link);
+    const open = async (max: number, signal = this.requestFor(link)) => {
       const docs: (LinkDoc | undefined)[] = [];
       try {
         for (const d of [link.a, link.b]) docs.push(d && 'data' in d ? { text: await decodeDoc(d.data, max) } : d);
@@ -2799,9 +2876,9 @@ export class Engine {
         }
         return this.toast('That share link is too large to open', 'err');
       }
-      if (!signal.aborted) void this.openRequest({ a: docs[0], b: docs[1], view: link.view, to: link.to, in: link.in }, signal);
+      if (!signal.aborted) void this.openRequest({ a: docs[0], b: docs[1], view: link.view, to: link.to, in: link.in, flat: link.flat, draft: link.draft ?? undefined, formats: link.formats === '1', csv: link.csv }, signal);
     };
-    await open(LINK_DOCUMENT);
+    await open(LINK_DOCUMENT, first);
   };
 
   /** Ends the wait for a handoff (see awaitHandoff). */
@@ -2811,7 +2888,7 @@ export class Engine {
    * `/#handoff`: the page that opened this tab sends documents too big for a link
    * by postMessage (lib/link.ts, app/(en)/integrate/snippets.ts). Only that page is heard, once.
    */
-  private awaitHandoff() {
+  private awaitHandoff({ readHandoff, HANDOFF_VERSION }: typeof import('../link')) {
     const opener = window.opener as Window | null;
     if (!opener) return;
     const reply = (m: HandoffReply, origin = '*') => {
@@ -2851,7 +2928,7 @@ export class Engine {
    * `signal`: its request (see requests).
    */
   private async openRequest(r: LinkRequest, signal: AbortSignal, from?: string) {
-    const got = await Promise.all([r.a, r.b].map((d) => (!d ? undefined : 'url' in d ? this.fetchText(d.url, signal) : { text: d.text, name: null, host: '' })));
+    const got = await Promise.all([r.a, r.b].map((d) => (!d ? undefined : 'url' in d ? this.fetchText(d.url, signal) : { text: d.text, name: null, host: '', url: '' })));
     if (signal.aborted || this.dead || got.includes(null)) return; // (fetchText said why)
     const [a, b] = got;
     const source = (d: LinkDoc): InputSource => (from !== undefined ? 'handoff' : 'url' in d ? 'link_url' : 'link');
@@ -2866,25 +2943,43 @@ export class Engine {
       // (Another format, as the link says or its URL's file name does, opens as itself.)
       const format = r.in ?? formatOfName(a.name);
       const pretty = format === 'json' ? open(a.text) : null;
-      this.load(pretty ?? a.text, a.name, true, pretty === null, undefined, format);
+      // (A CSV link's reading: its separator for this document; header and typing for this visit, nothing saved.)
+      this.presetting = !!r.csv;
+      if (r.csv) this.setSettings({ csvHeader: r.csv.header, csvTypes: r.csv.types });
+      this.presetting = false;
+      this.load(pretty ?? a.text, a.name, true, pretty === null, undefined, format, r.csv?.delimiter);
     }
-    if (b) {
+    const view = r.view ?? (b ? 'compare' : undefined);
+    // (With the Schema view, b is the schema: its editor takes it, with its options.)
+    // (One fetched by URL keeps where it came from: its relative refs are relative to it.)
+    if (b && view === 'schema') store.set({ schemaIn: { seq: Date.now(), text: open(b.text) ?? b.text, name: b.name, ...(b.url && { url: b.url }), draft: r.draft, formats: !!r.formats } });
+    else if (b) {
       noteLoad(source(r.b!), 2, b.name);
       this.loadCompare(open(b.text) ?? b.text, b.name);
     }
-    const view = r.view ?? (b ? 'compare' : undefined);
-    if (view === 'convert') this.setConvert(r.to ? { target: r.to } : {});
+    if (view === 'convert') {
+      // Flatten's options, before the conversion: for this visit only (presetting saves nothing), so the reader's
+      // own come back on the next one.
+      this.presetting = !!r.flat;
+      if (r.flat) this.setSettings({ flat: r.flat });
+      this.presetting = false;
+      this.setConvert(r.to ? { target: r.to } : {});
+    }
     else if (view && view !== this.settings.view) this.setView(view);
     const msg =
       from !== undefined ? (from ? `Opened JSON sent by ${from}` : 'Opened JSON sent by another page')
+      : b && view === 'schema' ? (a ? 'Loaded shared JSON and its schema' : 'Loaded the shared schema')
       : b ? 'Loaded the shared comparison'
       : a?.host ? `Loaded ${a.host}`
       : 'Loaded shared JSON';
     this.toast(a && had ? `${msg} · ${this.mod}Z restores your previous document` : msg, 'ok');
   }
 
-  /** Fetches a document from a URL; null, after saying why, when that fails (quietly, once `signal` aborts it). */
-  private async fetchText(raw: string, signal: AbortSignal): Promise<{ text: string; name: string; host: string } | null> {
+  /**
+   * Fetches a document from a URL; null, after saying why, when that fails (quietly, once `signal` aborts it). `url`:
+   * where it came from, after redirects.
+   */
+  private async fetchText(raw: string, signal: AbortSignal): Promise<{ text: string; name: string; host: string; url: string } | null> {
     let url: URL;
     try {
       url = new URL(raw.trim());
@@ -2896,7 +2991,8 @@ export class Engine {
     this.toast('Fetching…', 'info');
     let res: Response | null = null;
     try {
-      res = await fetch(url, { headers: { Accept: 'application/json, text/plain, */*' }, signal });
+      // (no-store: the service worker passes it by, so what was fetched for the visitor is never kept there.)
+      res = await fetch(url, { headers: { Accept: 'application/json, text/plain, */*' }, cache: 'no-store', signal });
       if (signal.aborted) return null;
       if (!res.ok) {
         this.toast(`Request failed: ${res.status} ${res.statusText}`, 'err');
@@ -2904,7 +3000,7 @@ export class Engine {
       }
       const text = await (await import('../json/read')).readText(res);
       const name = url.pathname.split('/').pop() || url.hostname;
-      return { text, name: /\.json$/i.test(name) || formatOfName(name) !== 'json' ? name : name + '.json', host: url.hostname };
+      return { text, name: /\.json$/i.test(name) || formatOfName(name) !== 'json' ? name : name + '.json', host: url.hostname, url: res.url || url.href };
     } catch {
       if (signal.aborted) return null;
       const why = res ? 'The connection dropped before the whole file arrived. Try again.' : await this.fetchFailure(url, signal);
@@ -2927,7 +3023,7 @@ export class Engine {
     const stop = () => probe.abort();
     signal.addEventListener('abort', stop);
     try {
-      await fetch(url, { mode: 'no-cors', signal: probe.signal });
+      await fetch(url, { mode: 'no-cors', cache: 'no-store', signal: probe.signal });
       return "Couldn't fetch. The server must allow cross-origin requests (CORS).";
     } catch {
       return signal.aborted ? null : "Couldn't reach the server. Check the address or try again later.";
@@ -2984,7 +3080,8 @@ export class Engine {
   private viewSeq = 0;
 
   setView(view: View, ready?: () => void) {
-    if (this.huge?.view(view)) return;
+    // (Huge mode has no Schema view: a file too big for the editor isn't validated.)
+    if (view === 'schema' ? this.huge : this.huge?.view(view)) return;
     this.flushLoad();
     store.set({ menu: null });
     const viewSeq = ++this.viewSeq;
@@ -2995,7 +3092,7 @@ export class Engine {
       if (!this.graph) void this.loadGraph().then(() => this.showGraph(viewSeq));
     }
     const packed = this.packed?.id === this.loadSeq ? this.packed : this.goodPacked;
-    if (view !== 'format' && view !== 'compare' && packed) {
+    if (view !== 'format' && !paired(view) && packed) {
       const { tree, text, metrics } = packed;
       const seq = this.loadSeq;
       // (The Tree and the Table read the root's children at once: they are made in the steps too.)
@@ -3023,8 +3120,9 @@ export class Engine {
     if (prev === 'graph' && view !== 'graph') this.graph?.deactivate();
     if (prev !== view && !this.presetting) track('view_opened', { view, ...(view === 'convert' && { target: targetInfo(this.settings.target).id }) });
     if (this.query && prev !== view) this.findIn(prev, '');
-    this.setSettings(view === 'compare' && prev !== 'compare' ? { view, prevView: prev } : { view });
-    if (this.query) requestAnimationFrame(() => this.dead || (this.settings.view === 'compare' ? this.closeFind() : this.refind(true)));
+    // (Compare and Schema have a second editor: closing one goes back to the view open before them.)
+    this.setSettings(paired(view) && !paired(prev) ? { view, prevView: prev as Settings['prevView'] } : { view });
+    if (this.query) requestAnimationFrame(() => this.dead || (paired(this.settings.view) ? this.closeFind() : this.refind(true)));
     if (view === 'table') {
       const root = this.good?.root ?? null;
       // (A selected primitive root has no container: the table says what it can show, as for an unselected one.)
@@ -3037,6 +3135,7 @@ export class Engine {
     }
     if (view === 'format') this.scheduleFormat(0);
     if (view === 'convert') this.scheduleConvert(0);
+    if (view === 'schema') store.set({ docText: this.compareLeft() });
     if (view === 'compare') {
       store.set({ docText: this.compareLeft(), cmpText: this.ed2.text });
       requestAnimationFrame(() => {
@@ -3344,12 +3443,36 @@ export class Engine {
     this.expTimer = window.setTimeout(() => this.settings.view === 'format' && this.noteExpiry(out), Math.abs(left) < 3600 ? 1000 : 30_000);
   }
 
-  /** Replaces the input with the Format view's output (undoable). */
+  /**
+   * Replaces the input with the Format view's output (undoable). While Flatten or Unflatten shows: with theirs, and
+   * the other direction shows, giving the input back.
+   */
   useOutput() {
     const r = this.fresh();
-    if (!r?.root) return this.toast(r ? "Can't do that yet. Fix the error first." : 'Nothing to format yet', r ? 'err' : 'info');
-    track('feature_used', { feature: 'use_output' });
     const s = this.settings;
+    const flat = s.view === 'convert' && isFlat(s.target);
+    // (Format offers the repaired document; flatten and unflatten take the input only as it is, valid: JSON Lines and
+    // other formats as they read, never with repairs.)
+    if (!r?.root || (flat && store.get().status.kind !== 'valid')) return this.toast(r ? "Can't do that yet. Fix the error first." : 'Nothing to format yet', r ? 'err' : 'info');
+    track('feature_used', { feature: 'use_output' });
+    if (flat) {
+      // Only the conversion of the text in the editor now, read as it is: checked when it arrives, as the parse
+      // above may be an earlier text's while a reader (JWT, YAML…) still loads, and a broken edit keeps the last valid
+      // document's on show. And only for this view session: leaving Convert stops its conversion, and the one made on
+      // coming back must not act on it. (Other options or another target end its wait with nothing: convFinished.)
+      const ver = this.ed.version;
+      const at = this.viewSeq;
+      void (this.convLater() ?? Promise.resolve(this.convOutput())).then((out) => {
+        // (The status is the latest analysis's: of this version once its parse arrived, valid only without repairs.)
+        if (out && !this.dead && this.ed.version === ver && store.get().status.kind === 'valid' && this.viewSeq === at) {
+          // (A conversion's output is one string. JSON Lines' is JSON Lines, one record a line, as the converters write it
+          // for a document read as JSON Lines: as one array, a .jsonl file would read it as a single record.)
+          this.replaceText(out as string, s.target === 'flatten' ? 'Flattened input' : 'Unflattened input');
+          this.setConvert({ target: s.target === 'flatten' ? 'unflatten' : 'flatten' });
+        }
+      });
+      return;
+    }
     const fixed = this.fixed(r);
     this.transform(
       (res, t) => (s.escape ? JSON.stringify(formatDoc(t, res, '', s.sortKeys)) : formatDoc(t, res, s.minify ? '' : this.indent, s.sortKeys)),
@@ -3536,7 +3659,7 @@ export class Engine {
 
   // ── Convert ────────────────────────────────────────────────────────────
 
-  setConvert(patch: Partial<Pick<Settings, 'target' | 'rootName' | 'tsStyle' | 'csharpLib'>>) {
+  setConvert(patch: Partial<Pick<Settings, 'target' | 'rootName' | 'tsStyle' | 'csharpLib' | 'flat'>>) {
     if (!this.presetting) {
       const s = this.settings;
       // The target and options come from fixed lists. The root type name is typed, so it is never sent.
@@ -3569,7 +3692,7 @@ export class Engine {
   /** The Convert view's settings and the document, as a key: what a conversion was made for (see convFinished). */
   private convKey() {
     const s = this.settings;
-    return `${s.target}\n${s.rootName}\n${s.tsStyle}\n${s.csharpLib}\n${this.docGen}`;
+    return `${s.target}\n${s.rootName}\n${s.tsStyle}\n${s.csharpLib}\n${JSON.stringify(s.flat)}\n${this.docGen}`;
   }
 
   /** Copy/Download waiting for the conversion asked for last (see convPending). */
@@ -3669,9 +3792,13 @@ export class Engine {
       // records; Excel is a binary download, so its preview is the same table.
       const xlsx = info.id === 'xlsx' || info.id === 'csv' ? await import('../convert/xlsx') : null;
       if (!current()) return;
+      let r: { note: string; warn: boolean; flip: boolean; error?: string } | undefined;
       const out = xlsx
         ? xlsx.toCsv(xlsx.records(root))
-        : mod.convert(root, info.id, { rootName: s.rootName || 'Root', tsStyle: s.tsStyle, csharpLib: s.csharpLib });
+        : // (The settings as they are: convert() reads its own, and a cleared root name is "Root". Flatten and
+          // unflatten run in slices, typing going on in between: a newer conversion stops this one.)
+          await mod.convert(root, info.id, { ...s, lines: this.good!.multi, report: (x) => (r = x), live: current });
+      if (!current()) return;
       if (xlsx) this.code.setText(out, (line, _s, _e, state) => mod.csvLine(line, state), false, { start: mod.CSV_START, scan: mod.csvScan });
       else {
         // (Rows carry the highlighter's state: YAML block scalars and multi-line strings colour as a whole document does.)
@@ -3679,7 +3806,7 @@ export class Engine {
         this.code.setText(out, rows.hl, false, rows.scanner);
       }
       this.convFinished(seq, out, ver, key);
-      store.set({ convert: { loading: false, error: null, lines: out ? out.split('\n').length : 0, bytes: out.length } });
+      store.set({ convert: { loading: false, error: r?.error || null, lines: out ? out.split('\n').length : 0, bytes: out.length, flat: r } });
     } catch (e) {
       if (!current()) return;
       // The CSV and Excel preview isn't behind convert(), which reports deep nesting itself.
@@ -3725,19 +3852,25 @@ export class Engine {
       }
       return;
     }
+    // Named when it is saved, as the document it was made of: flatten's and unflatten's output for JSON Lines (the
+    // parse's `multi`, as runConvert hands it over) is JSON Lines, a .jsonl file.
+    const save = (out: string) => {
+      const lines = !!this.good?.multi;
+      this.save(out, convertFileName(info, base, s0.rootName, lines), convertMime(info, lines));
+    };
     const later = this.convLater();
     if (later) {
       void later.then((out) => {
         // (Superseded: another target or document before this one's conversion came, never saved under this name.)
         if (this.dead || out === undefined) return;
         if (!out || typeof out !== 'string') return this.toast('Nothing to download yet', 'info');
-        this.save(out, name, info.mime);
+        save(out);
       });
       return;
     }
     const out = this.convOutput();
     if (!out) return this.toast('Nothing to download yet', 'info');
-    this.save(out, name, info.mime);
+    save(out as string);
   }
 
   tableShow(n: JNode | null) {
@@ -4007,7 +4140,7 @@ export class Engine {
   /** Opens the find bar for the open view, prefilled with the editor selection. */
   focusSearch() {
     if (this.huge?.find()) return;
-    if (this.settings.view === 'compare') this.setView('format');
+    if (paired(this.settings.view)) this.setView('format');
     const picked = this.ed.hasFocus() ? this.ed.selectedText() : '';
     if (picked && picked.length < 100 && !picked.includes('\n')) this.find(picked, true);
     else store.set({ find: { ...store.get().find, open: true } });
@@ -4067,8 +4200,9 @@ export class Engine {
     this.presetting = true;
     try {
       this.load(p.initialText ?? '', p.initialFileName ?? null, false, false, undefined, p.input ?? formatOfName(p.initialFileName));
+      if (p.schema) store.set({ schemaIn: { seq: Date.now(), text: p.schema, sample: true } });
       if (s.view === 'convert') {
-        this.setConvert({ target: s.target ?? 'typescript', rootName: s.rootName ?? 'Root', tsStyle: s.tsStyle ?? 'interface' });
+        this.setConvert({ target: s.target ?? 'typescript', rootName: s.rootName ?? 'Root', tsStyle: s.tsStyle ?? 'interface', flat: s.flat });
       } else if (s.view) {
         this.setView(s.view);
         if (s.view === 'format') this.setFormat({ minify: s.minify ?? false, sortKeys: s.sortKeys ?? false, escape: s.escape ?? false });
@@ -4217,6 +4351,8 @@ export class Engine {
       this.menuKeyAt = e.timeStamp;
       run = () => this.openMenu(area, t);
     } else if (mod && !e.altKey && (k === 'k' || (e.shiftKey && k === 'p'))) run = () => this.openPalette();
+    // (The schema editor has its own Ctrl/⌘ keys: components/SchemaView.tsx.)
+    else if (mod && t.closest?.('.pane-sch')) return;
     else if (mod && !e.altKey && e.key === 'Enter' && this.ed2.hasFocus()) run = () => this.formatCompare();
     else if (mod && !e.altKey && e.key === 'Enter') run = e.shiftKey ? () => this.minify() : () => this.useOutput();
     else if (e.altKey && e.shiftKey && !mod && e.code === 'KeyF') run = () => this.format();
@@ -4226,8 +4362,8 @@ export class Engine {
     // Alt+Z like VS Code (on macOS, Option+Z types Ω: not while typing).
     else if (e.altKey && !mod && !e.shiftKey && e.code === 'KeyZ' && !(s.mac && typing)) run = () => this.toggleWrap();
     // On macOS, Option+digit types characters (#, €…): never steal it while typing.
-    else if (e.altKey && !mod && /^Digit[1-6]$/.test(e.code) && !(s.mac && typing)) {
-      const views: View[] = ['format', 'tree', 'table', 'graph', 'convert', 'compare'];
+    else if (e.altKey && !mod && /^Digit[1-7]$/.test(e.code) && !(s.mac && typing)) {
+      const views: View[] = ['format', 'tree', 'table', 'graph', 'convert', 'compare', 'schema'];
       run = () => this.setView(views[Number(e.code.slice(5)) - 1]);
     }
     else if (!typing && !mod && !e.altKey) {
@@ -4526,6 +4662,18 @@ export class Engine {
         .register('/sw.js')
         .then(() => navigator.serviceWorker.ready)
         .then((reg) => {
+          // Hand the SW the files this page loaded so the app works offline (`pages`: and the pages, whose chunks it
+          // follows). Never what it fetched (a document or schema by URL, which the SW would fetch again with cookies
+          // and keep): the app's own fetched files, a page's dictionaries, are named in its HTML and come with it.
+          const post = (pages: boolean) => {
+            const urls = (performance.getEntriesByType('resource') as PerformanceResourceTiming[])
+              .filter((e) => e.name.startsWith(location.origin + '/') && !e.name.includes('/_vercel/') && !/^(fetch|xmlhttprequest|beacon)$/.test(e.initiatorType))
+              .map((e) => e.name);
+            const home = /^\/[a-z]{2}(?=\/|$)/.exec(location.pathname)?.[0] || '/';
+            reg.active?.postMessage({ type: 'cache', urls: pages ? [...new Set([location.origin + '/', location.origin + home, location.origin + location.pathname, ...urls])] : urls });
+          };
+          // Links' code first, and handed over at once: a share link opens offline as soon as the shell does.
+          void import('../link').then(() => post(false), () => {});
           // Load the lazy features once so they're cached for offline use and survive a
           // deploy while this tab stays open: one module per idle period, never a long task.
           const mods = [
@@ -4541,13 +4689,7 @@ export class Engine {
           const next = () => {
             const load = mods.shift();
             if (load) return void load().then(() => idle(next), () => idle(next));
-            // Hand the SW every asset this page loaded so the app works offline.
-            const urls = performance
-              .getEntriesByType('resource')
-              .map((e) => e.name)
-              .filter((u) => u.startsWith(location.origin) && !u.includes('/_vercel/'));
-            const home = /^\/[a-z]{2}(?=\/|$)/.exec(location.pathname)?.[0] || '/';
-            reg.active?.postMessage({ type: 'cache', urls: [...new Set([location.origin + '/', location.origin + home, location.origin + location.pathname, ...urls])] });
+            post(true);
           };
           idle(next);
         })

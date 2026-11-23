@@ -8,6 +8,7 @@ import ts from 'typescript';
 import { parse } from '../lib/json/parser';
 import { packTree } from '../lib/json/pack-send';
 import { EN } from '../lib/i18n/ui';
+import { paired } from '../lib/engine/store';
 
 // Run the real engine methods with a controlled import and animation-frame queue.
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
@@ -46,7 +47,7 @@ function session() {
     setTimeout: (fn: () => void) => tasks.push(fn), clearTimeout: () => {},
     window: { setTimeout: (fn: () => void) => tasks.push(fn) },
     require: (name: string) => {
-      if (name === './store') return { store: { get: () => state, set: (patch: Dynamic) => Object.assign(state, patch) } };
+      if (name === './store') return { paired, store: { get: () => state, set: (patch: Dynamic) => Object.assign(state, patch) } };
       if (name === './idle') return { soon: (fn: () => void) => tasks.push(fn) };
       if (name === '../analytics') return { track: (...args: unknown[]) => events.push(args), reportError: (...args: unknown[]) => errors.push(args) };
       if (name === '../i18n/ui') return { rt: EN };
