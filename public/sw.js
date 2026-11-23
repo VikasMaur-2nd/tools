@@ -41,7 +41,9 @@
  * and still load any chunk of it (a feature opened for the first time, offline).
  * A generation's files are deleted once all its tabs are closed (checked on later
  * visits and page messages), or RETIRE_MS after it, unless a cached page needs them
- * again; never while a worker is installing (see arriving). A tool page showing a new build also brings '/' and its language's home to
+ * again; never while a worker is installing (see arriving), nor while a cached page's
+ * files aren't all known (a chunk of it not cached yet: what it names may be cached;
+ * a page's report caches those chunks, then tidies up again). A tool page showing a new build also brings '/' and its language's home to
  * it, so a visitor who never opens '/' gets the same clean-up. The cache so holds
  * the current build, the builds its cached pages were saved with, and older builds
  * only while their tabs live. The record ('/sw.js?retired') is never served. Why no
@@ -171,40 +173,57 @@ function filesIn(url, text) {
   return out;
 }
 
+/** Scripts and stylesheets a page names that the server answered 404 or 410 for (a name that is no file), as this worker found. */
+const missing = new Set();
+
 /**
- * The files of a page (see the header), cached as they are found unless `fetchMissing`
- * is false (then only what the cache holds is followed); with `deep` false, only what
- * its HTML names. `page`: the page's URL (whose language's huge dictionary it needs).
- * `ok`: every file that had to make it is cached; `files`: the URLs found.
+ * The files of a page (see the header) from what its HTML names (`roots`), cached as they are found
+ * unless `fetchMissing` is false (then only what the cache holds is followed, `have` its keys if
+ * given); with `deep` false, only the roots. `page`: the page's URL (whose language's huge dictionary
+ * it needs). `ok`: every file that had to make it is cached; `files`: the URLs found; `open`: a script
+ * or stylesheet among them isn't cached (nor known to be no file), so what it names is unknown.
  */
-async function pageFiles(cache, html, fetchMissing, deep = true, page = ORIGIN + '/') {
+async function pageFiles(cache, roots, fetchMissing, deep = true, page = ORIGIN + '/', have = null) {
   const files = new Set();
+  let open = false;
   const visit = async (url, required) => {
-    if (files.has(url) || files.size >= MAX_FILES || otherStrings(url, page)) return true;
+    if (files.has(url) || otherStrings(url, page)) return true;
+    if (files.size >= MAX_FILES) {
+      open = true; // (past the cap the rest is unknown)
+      return true;
+    }
     files.add(url);
-    let res = await cache.match(url, MATCH);
+    const path = new URL(url).pathname;
+    const names = deep && /\.(?:js|css)$/.test(path) && isStatic(path); // a file that names others
+    // (With `have`, the cache is read only for a text not read yet: see filesIn.)
+    let res = have && !have.has(bare(url)) ? undefined : have && (!names || named.has(url)) ? true : await cache.match(url, MATCH);
     if (!res) {
-      if (!fetchMissing) return true;
+      if (!fetchMissing) {
+        if (names && !missing.has(bare(url))) open = true;
+        return true;
+      }
       try {
         res = await download(url, { credentials: 'same-origin' });
       } catch {
         return false; // offline or a flaky network: try again on a later visit
       }
-      if (!cacheable(res)) return !required;
+      if (!cacheable(res)) {
+        if (res.status === 404 || res.status === 410) missing.add(bare(url));
+        return !required;
+      }
       try {
         await cache.put(url, res.clone());
       } catch {
         return false; // (storage full)
       }
     }
-    const path = new URL(url).pathname;
-    if (!deep || !/\.(?:js|css)$/.test(path) || !isStatic(path)) return true;
+    if (!names) return true;
     const text = named.has(url) ? '' : await res.text();
     const results = await Promise.all(filesIn(url, text).map((u) => visit(u, false)));
     return results.indexOf(false) === -1;
   };
-  const results = await Promise.all(extractAssets(html).map((u) => visit(u, isHashed(new URL(u).pathname))));
-  return { ok: results.indexOf(false) === -1, files };
+  const results = await Promise.all(roots.map((u) => visit(u, isHashed(new URL(u).pathname))));
+  return { ok: results.indexOf(false) === -1, files, open };
 }
 
 /** Whether two pages name the same files (the same build of the same page). */
@@ -230,7 +249,7 @@ async function storePage(cache, key, res, fresh) {
   if (html === null) return false;
   const old = await cache.match(key, MATCH);
   const same = old && isHTML(old) && sameFiles(extractAssets(await old.text()), extractAssets(html));
-  if (!same && !(await pageFiles(cache, html, true, false, page)).ok) return false;
+  if (!same && !(await pageFiles(cache, extractAssets(html), true, false, page)).ok) return false;
   return serially(() => commit(cache, key, page, res, html, false, fresh));
 }
 
@@ -334,16 +353,25 @@ function generations(rec, live) {
   return [];
 }
 
-/** Every file the cached pages need, from what the cache holds (`keys`: its keys), as bare URLs. */
+/**
+ * What the cached pages need, from what the cache holds (`keys`: its keys): `keep`, every file of
+ * theirs (bare URLs), and `open`, the pages whose files aren't all known (see pageFiles): what an
+ * uncached chunk of theirs names may be cached, and be needed.
+ */
 async function needed(cache, keys) {
+  const have = new Set(keys.map((k) => bare(k.url)));
   const keep = new Set();
+  const open = [];
   for (const k of keys) {
     const path = new URL(k.url).pathname;
-    if (isStatic(path) || FILE_RE.test(path) || k.url === RETIRED) continue;
+    if (isStatic(path) || FILE_RE.test(path)) continue; // (files, and the records: '/sw.js?…')
     const page = await cache.match(k, MATCH);
-    if (page && isHTML(page)) (await pageFiles(cache, await page.text(), false, true, k.url)).files.forEach((u) => keep.add(bare(u)));
+    if (!page || !isHTML(page)) continue;
+    const found = await pageFiles(cache, extractAssets(await page.text()), false, true, k.url, have);
+    found.files.forEach((u) => keep.add(bare(u)));
+    if (found.open) open.push(k.url);
   }
-  return keep;
+  return { keep, open };
 }
 
 /**
@@ -362,7 +390,7 @@ async function needed(cache, keys) {
  *    with this tab among its tabs when it is replaced, or the network's page: the current build, whose
  *    files a later replacement retires with this tab among the tabs. A retired file such a tab reports
  *    it loaded leaves its generation (to be retired again by a later replacement).
- *  - Deleting checks the cached pages again: a file one needs again stays.
+ *  - Deleting checks the cached pages again, all their files known: a file one needs again stays.
  * A tab being opened without an id stands as UNSEEN: OPENING_MS later, every tab open then takes its
  * place (it among them, if it is still open).
  */
@@ -390,14 +418,15 @@ async function tidy(cache, replaced, posted, from) {
     if (unseen && now - g.at >= OPENING_MS) g.clients = g.clients.concat(Array.from(ids));
     g.clients = g.clients.filter((id) => ids.has(id) || (id === UNSEEN && now - g.at < OPENING_MS)); // closed tabs go
   });
-  let keep = null;
+  let need = null; // (see needed)
   if (replaced) {
     const keys = await cache.keys();
-    keep = await needed(cache, keys);
+    need = await needed(cache, keys);
+    const keep = need.keep;
     // (Bare URLs throughout: a key is compared without its fragment, as the cache matches it.)
     const cached = new Set(keys.map((k) => bare(k.url)));
     const freed = new Set();
-    (await pageFiles(cache, replaced.html, false, true, replaced.page)).files.forEach((u) => cached.has(bare(u)) && !keep.has(bare(u)) && freed.add(bare(u)));
+    (await pageFiles(cache, extractAssets(replaced.html), false, true, replaced.page, cached)).files.forEach((u) => cached.has(bare(u)) && !keep.has(bare(u)) && freed.add(bare(u)));
     const held = new Set();
     gens.forEach((g) => {
       g.urls = g.urls.filter((u) => !freed.has(u));
@@ -414,12 +443,12 @@ async function tidy(cache, replaced, posted, from) {
     if (mine.length) gens.push({ urls: mine, clients: tabs(replaced.fresh), at: now });
     if (rest.length) gens.push({ urls: rest, clients: tabs(), at: now });
   }
-  // (Nothing goes while a worker is on its way in: see arriving. Its generations wait for the next tidy-up.)
-  const done = known && !arriving() ? gens.filter((g) => !g.clients.length || now - g.at >= RETIRE_MS) : [];
-  if (done.length) {
-    if (!keep) keep = await needed(cache, await cache.keys());
-    await Promise.all([].concat(...done.map((g) => g.urls)).filter((u) => !keep.has(u)).map((u) => cache.delete(u)));
-  }
+  // Nothing goes while a worker is on its way in (see arriving), nor while a cached page's files aren't all known
+  // (see needed): its generations wait for the next tidy-up (a page's report follows those pages, then tidies up).
+  let done = known && !arriving() ? gens.filter((g) => !g.clients.length || now - g.at >= RETIRE_MS) : [];
+  if (done.length && !need) need = await needed(cache, await cache.keys());
+  if (done.length && need.open.length) done = [];
+  if (done.length) await Promise.all([].concat(...done.map((g) => g.urls)).filter((u) => !need.keep.has(u)).map((u) => cache.delete(u)));
   gens = gens.filter((g) => done.indexOf(g) === -1 && g.urls.length);
   if (!gens.length) {
     if (saved) await cache.delete(RETIRED);
@@ -451,7 +480,7 @@ async function refreshShell() {
   if (prev && sameFiles(prev, now)) {
     // The same build: its files came with it (pages post what they load); anything its HTML names that is missing, again.
     await Promise.all(now.map((u) => cacheIfMissing(cache, u)));
-  } else if (!(await pageFiles(cache, html, true, false)).ok && prev) return; // flaky network or a half-done deploy: keep the consistent old shell
+  } else if (!(await pageFiles(cache, now, true, false)).ok && prev) return; // flaky network or a half-done deploy: keep the consistent old shell
   // (With no copy yet, even a partial one: better than none offline, and the page posts the rest.)
   const done = await serially(() => commit(cache, '/', ORIGIN + '/', res, html, true));
   if (!done || !done.old || extractAssets(done.old).every((u) => now.indexOf(u) !== -1)) return; // not stored, first install, or same build
@@ -521,8 +550,13 @@ self.addEventListener('message', (event) => {
         // have closed since, and their files can go; what this tab loaded stays (see tidy).
         serially(() => tidy(cache, null, urls, from)).catch(() => {}),
         Promise.all(urls.map((u) => cacheIfMissing(cache, u)))
-          // The page has settled: now the chunks its pages' scripts can load later (see the header).
+          // The page has settled: now the chunks its pages' scripts can load later (see the header), then those of
+          // any other cached page whose files aren't all known (stored, then left before its tab reported in), and
+          // the clean-up again: what it held back until they were known (see tidy) can go now.
           .then(() => Promise.all(urls.map((u) => followPage(cache, u))))
+          .then(() => cache.keys().then((keys) => needed(cache, keys)))
+          .then((need) => Promise.all(need.open.map((u) => followPage(cache, u))))
+          .then(() => serially(() => tidy(cache)))
           .catch(() => {}),
       ]),
     ),
@@ -541,7 +575,7 @@ async function followPage(cache, url) {
   const html = await page.text();
   const key = url + ' ' + extractAssets(html).join(' ');
   if (followed.has(key)) return;
-  if ((await pageFiles(cache, html, true, true, url)).ok) followed.add(key);
+  if ((await pageFiles(cache, extractAssets(html), true, true, url)).ok) followed.add(key);
 }
 
 self.addEventListener('fetch', (event) => {

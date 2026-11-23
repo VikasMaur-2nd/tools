@@ -855,8 +855,11 @@ test("service worker: a list of tabs that never comes (Firefox, a tab closing) n
   // Not knowing the tabs, nothing goes: build a's files stay, also at the next report.
   sw.tabs([]);
   const report = sw.postSoon(['/'], 'n');
-  await settle();
-  sw.advance(5_000);
+  // (5 s for its clean-up, 5 more for the one after its pages' chunks are followed.)
+  for (let i = 0; i < 2; i++) {
+    await settle();
+    sw.advance(5_000);
+  }
   assert.ok(await settled(report), 'a report is done too');
   for (const f of filesOf('a')) assert.ok(sw.has(f), f);
   // The tabs answer again: once the old tab is closed, build a goes.
@@ -1121,4 +1124,42 @@ test("service worker: a file the new build's tab loaded on its own stays while t
   await sw.post(['/'], 'U');
   assert.ok(!sw.has('/_next/static/chunks/b-diff.js'));
   assert.ok(!sw.statics().some((p) => p.includes('/a-')));
+});
+
+test("service worker: a file a cached page needs through a chunk not cached yet isn't deleted before that chunk is read (finding 3)", async () => {
+  // shared.js: in build a's lazy chunk, not in build b, in build c's lazy chunk again (a module unchanged).
+  const tiny = (tag: string, lazy: string): Files => ({
+    '/': `<!doctype html><title>Home ${tag}</title><script src="/_next/static/chunks/${tag}-main.js"></script>`,
+    [`/_next/static/chunks/${tag}-main.js`]: `x.l("static/chunks/${tag}-lazy.js")`,
+    [`/_next/static/chunks/${tag}-lazy.js`]: lazy,
+    '/_next/static/chunks/shared.js': 'shared()',
+  });
+  const uses = 's.l("static/chunks/shared.js")';
+  const sw = worker();
+  sw.serve(tiny('a', uses));
+  await sw.install();
+  sw.tabs(['tA']);
+  await sw.post(['/'], 'tA');
+  assert.ok(sw.has('/_next/static/chunks/shared.js'));
+  // Build b, then build c, each brought in by a visit while build a's tab is open.
+  sw.serve(tiny('b', 'b()'));
+  await sw.visit('/', 'v1');
+  sw.tabs(['tA', 'v1']);
+  sw.serve(tiny('c', uses));
+  await sw.visit('/', 'v2');
+  sw.tabs(['tA', 'v1', 'v2']);
+  // The old tabs close; a tab of build c reports in, while the server can't send shared.js again.
+  sw.serve({ ...tiny('c', uses), '/_next/static/chunks/shared.js': 503 });
+  sw.tabs(['tC']);
+  sw.advance(61_000); // (the visits' tabs are no longer being opened)
+  // (Build c's lazy chunk takes a moment to come: the clean-up the report starts at once has run by then.)
+  const release = sw.hold('/_next/static/chunks/c-lazy.js');
+  const report = sw.postSoon(['/'], 'tC');
+  await settle();
+  release();
+  await report;
+  assert.ok(sw.has('/_next/static/chunks/shared.js'), 'kept: build c needs it');
+  assert.ok(!sw.has('/_next/static/chunks/a-lazy.js') && !sw.has('/_next/static/chunks/b-main.js'), 'what nothing needs went');
+  sw.offline();
+  assert.deepEqual(await loadsAll(sw, 'tC', ['/_next/static/chunks/c-main.js', '/_next/static/chunks/c-lazy.js', '/_next/static/chunks/shared.js']), []);
 });
