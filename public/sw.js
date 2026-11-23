@@ -356,7 +356,8 @@ async function needed(cache, keys) {
  *  - A tab open, or being opened from the cache, when its page's copy is replaced is among the tabs of
  *    the generation that copy's files go to (from an older generation too: tabs opened since then may
  *    have got that copy), so they stay while it is open. Not the tab that got the new copy from the
- *    network (it shows among the clients by then): it runs the new build.
+ *    network (it shows among the clients by then): it runs the new build. It is among the tabs of what
+ *    else no cached page needs (what tabs loaded on their own), retired with that copy's files.
  *  - A tab opened later got a cached page, whose files stay while it is cached and go to a generation
  *    with this tab among its tabs when it is replaced, or the network's page: the current build, whose
  *    files a later replacement retires with this tab among the tabs. A retired file such a tab reports
@@ -403,9 +404,15 @@ async function tidy(cache, replaced, posted, from) {
       g.urls.forEach((u) => held.add(u));
     });
     const urls = Array.from(cached).filter((u) => isHashed(new URL(u).pathname) && !keep.has(u) && !held.has(u));
-    // (Tabs unknown: UNSEEN stands for all of them, the ones open OPENING_MS later taking its place.)
-    const clients = known ? Array.from(ids).filter((id) => id !== replaced.fresh) : [];
-    if (urls.length) gens.push({ urls, clients: clients.concat(unnamed || !known ? [UNSEEN] : []), at: now });
+    // The old copy's files, for every tab but the one that got the new copy from the network (it runs the new
+    // build); any other file no cached page needs (what a tab loaded on its own: a page reached by client-side
+    // navigation, of any build, the new one's too), for every tab. (Tabs unknown: UNSEEN stands for all of them,
+    // the ones open OPENING_MS later taking its place.)
+    const tabs = (but) => (known ? Array.from(ids).filter((id) => id !== but) : []).concat(unnamed || !known ? [UNSEEN] : []);
+    const mine = urls.filter((u) => freed.has(u));
+    const rest = urls.filter((u) => !freed.has(u));
+    if (mine.length) gens.push({ urls: mine, clients: tabs(replaced.fresh), at: now });
+    if (rest.length) gens.push({ urls: rest, clients: tabs(), at: now });
   }
   // (Nothing goes while a worker is on its way in: see arriving. Its generations wait for the next tidy-up.)
   const done = known && !arriving() ? gens.filter((g) => !g.clients.length || now - g.at >= RETIRE_MS) : [];

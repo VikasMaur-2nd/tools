@@ -1089,3 +1089,36 @@ test("service worker: installing deletes nothing, so a page the worker before it
   const named = ['app.css', 'main.js', 'page.js', 'diff.css', 'diff.js'].map((f) => '/_next/static/chunks/a-' + f);
   assert.deepEqual(await loadsAll(sw, 'off', named), []);
 });
+
+test("service worker: a file the new build's tab loaded on its own stays while that tab is open, after its homes follow (finding 2)", async () => {
+  const sw = worker();
+  sw.serve(site('a'));
+  await sw.install();
+  sw.tabs(['a-tab']);
+  await sw.visit('/tools/json-graph', 'a-tab');
+  await sw.post(['/', '/tools/json-graph'], 'a-tab');
+  // Build b: the only tab opens the tool page from the network; '/' follows it, slowly.
+  sw.serve(site('b'));
+  sw.tabs(['T']);
+  const release = sw.hold('/');
+  const nav = sw.open('/tools/json-graph', 'T');
+  assert.match((await nav.text)!, /Graph b/);
+  await settle();
+  // Meanwhile the tab reaches the diff tool by client-side navigation: its script (no cached page names it) is cached.
+  assert.equal(await sw.load('/_next/static/chunks/b-diff.js', 'T'), 'diff()');
+  release();
+  await nav.done;
+  assert.match(sw.cached('/')!, /Home b/);
+  // Another tab of build b reports in (the clean-up sees every cached page in full).
+  sw.tabs(['T', 'U']);
+  await sw.post(['/'], 'U');
+  assert.ok(sw.has('/_next/static/chunks/b-diff.js'), 'kept while the tab that loaded it is open');
+  sw.offline();
+  assert.equal(await sw.load('/_next/static/chunks/b-diff.js', 'T'), 'diff()');
+  sw.offline(false);
+  // That tab closed: it goes.
+  sw.tabs(['U']);
+  await sw.post(['/'], 'U');
+  assert.ok(!sw.has('/_next/static/chunks/b-diff.js'));
+  assert.ok(!sw.statics().some((p) => p.includes('/a-')));
+});
