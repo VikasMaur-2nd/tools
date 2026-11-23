@@ -53,6 +53,8 @@ const CACHE = PREFIX + VERSION;
 const ORIGIN = self.location.origin;
 const MATCH = { ignoreVary: true };
 const RETIRED = ORIGIN + '/sw.js?retired';
+/** Homes a page's new build couldn't bring along yet (see refreshHomes), never served either. */
+const HOMES = ORIGIN + '/sw.js?homes';
 const RETIRE_MS = 7 * 24 * 3600 * 1000;
 /** Longer than a tab takes to show among the clients once its page is served (see opening). */
 const OPENING_MS = 60 * 1000;
@@ -443,18 +445,27 @@ async function refreshShell() {
  * After a page (`url`) was replaced by a new build's copy (from the network, for the tab `fresh`): '/'
  * and the page's language home, when cached, are brought to the network's copy too (stored whole, see
  * storePage). Unvisited pages fall back to them offline, and their old build can go although this
- * visitor may never open them again.
+ * visitor may never open them again. A home that couldn't be (a network error, a 503, a file missing)
+ * is noted (HOMES) and tried again after the next page from the network, of whichever build.
  */
 async function refreshHomes(cache, url, fresh) {
   const path = new URL(url).pathname;
-  const homes = ['/', langHome(path)].filter((p, i, all) => p && p !== path && all.indexOf(p) === i);
+  const noted = await cache.match(HOMES);
+  const due = noted ? await noted.json().catch(() => []) : [];
+  const homes = ['/', langHome(path)].concat(due).filter((p, i, all) => typeof p === 'string' && p && p !== path && all.indexOf(p) === i);
+  const failed = [];
   await Promise.all(
     homes.map(async (p) => {
       if (!(await cache.match(p, MATCH))) return;
-      const res = await download(p, { cache: 'no-cache', credentials: 'same-origin' });
-      if (cacheable(res)) await storePage(cache, ORIGIN + p, res, fresh);
+      try {
+        const res = await download(p, { cache: 'no-cache', credentials: 'same-origin' });
+        if (cacheable(res) && (await storePage(cache, ORIGIN + p, res, fresh))) return;
+      } catch {}
+      failed.push(p);
     }),
   );
+  if (failed.length) await cache.put(HOMES, new Response(JSON.stringify(failed), { headers: { 'content-type': 'application/json' } }));
+  else if (noted) await cache.delete(HOMES);
 }
 
 self.addEventListener('install', (event) => {
@@ -557,11 +568,13 @@ function networkFirst(event, req, tab) {
   return fetch(req).then(
     (res) => {
       opening.delete(tab); // the network's page: the current build
-      // Kept with its files only (see the header): until they are, the cached copy stays. A new build: the homes follow.
+      // Kept with its files only (see the header): until they are, the cached copy stays. A new build: the homes
+      // follow (also those an earlier try left behind: see refreshHomes).
       const fresh = event.resultingClientId;
       if (cacheable(res)) {
         const copy = res.clone();
-        event.waitUntil(caches.open(CACHE).then((cache) => storePage(cache, req, copy, fresh).then((r) => r && r.replaced && refreshHomes(cache, req.url, fresh))).catch(() => {}));
+        const homes = async (cache, r) => r && (r.replaced || (await cache.match(HOMES))) && refreshHomes(cache, req.url, fresh);
+        event.waitUntil(caches.open(CACHE).then((cache) => storePage(cache, req, copy, fresh).then((r) => homes(cache, r))).catch(() => {}));
       }
       return res;
     },

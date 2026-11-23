@@ -1011,3 +1011,27 @@ test("service worker: a file that isn't hashed goes to the page as soon as its h
   sw.advance(30_000);
   assert.ok(await settled(second.done));
 });
+
+test('service worker: a home that failed to follow a tool page to its new build is tried again on the next visit (finding 5)', async () => {
+  const sw = worker();
+  sw.serve(site('a'));
+  await sw.install();
+  sw.tabs(['a-tab']);
+  await sw.visit('/tools/json-graph', 'a-tab');
+  await sw.post(['/', '/tools/json-graph'], 'a-tab');
+  // Build b: the tool page comes from the network, but '/' answers 503 for that moment.
+  sw.serve({ ...site('b'), '/': 503 });
+  sw.tabs(['b1']);
+  await sw.visit('/tools/json-graph', 'b1');
+  assert.match(sw.cached('/tools/json-graph')!, /Graph b/);
+  assert.match(sw.cached('/')!, /Home a/, 'the shell there stays, whole');
+  // The same build's tool page again, '/' fine now: the shell follows.
+  sw.serve(site('b'));
+  sw.tabs(['b2']);
+  await sw.visit('/tools/json-graph', 'b2');
+  assert.match(sw.cached('/')!, /Home b/);
+  assert.ok(!sw.has('/sw.js?homes'), 'nothing left to try');
+  // And build a's files go once its tabs are.
+  await sw.post(['/', '/tools/json-graph'], 'b2');
+  assert.ok(!sw.statics().some((p) => p.includes('/a-')), sw.statics().join(' '));
+});
