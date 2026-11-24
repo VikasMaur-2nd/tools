@@ -90,6 +90,8 @@ function world() {
     slowOpen: false,
     /** Runs when the cache's keys are read (a moment inside a clean-up's scan). */
     onKeys: null as null | (() => void),
+    /** Paths whose held or stalled body was cancelled (by every reader of it: the request ends). */
+    cancelled: [] as string[],
     /** Paths whose answer's headers come but whose body never ends. */
     stallBody: new Set<string>(),
     /** Paths whose answers' bodies (their text sent at once) end only once this settles, for fetches started meanwhile. */
@@ -114,8 +116,12 @@ function worker(source = readFileSync(join(process.cwd(), 'public/sw.js'), 'utf8
     Object.defineProperty(res, 'type', { value: 'basic' });
     return res;
   };
+  /** This worker's lookups that wait (see holdMatch): by path, the lookup to hold and a count. */
+  const holdsM = new Map<string, { n: number; at: number; p: Promise<void> }>();
   const cache = {
     match: async (r: string | { url: string }) => {
+      const h = holdsM.get(new URL(key(r)).pathname);
+      if (h && ++h.n === h.at) await h.p;
       if (env.failMatch(key(r))) throw new DOMException('Unable to read', 'UnknownError');
       const hit = env.store.get(key(r));
       return hit ? response(hit.body, hit.type) : undefined;
@@ -152,6 +158,7 @@ function worker(source = readFileSync(join(process.cwd(), 'public/sw.js'), 'utf8
           void until.then(() => { try { c.close(); } catch {} });
           signal?.addEventListener('abort', () => { try { c.error(aborted()); } catch {} });
         },
+        cancel: () => void env.cancelled.push(url.pathname),
       });
       const res = new Response(stream, { headers: { 'content-type': type } });
       Object.defineProperty(res, 'type', { value: 'basic' });
@@ -184,7 +191,7 @@ function worker(source = readFileSync(join(process.cwd(), 'public/sw.js'), 'utf8
     return id;
   };
   const clearTimeoutFn = (id: number) => void (env.timers = env.timers.filter((t) => t.id !== id));
-  runInNewContext(source, { self, caches, fetch: fetchFn, Response, URL, Set, Map, Promise, JSON, Date: Clock, DOMException, AbortController, setTimeout: setTimeoutFn, clearTimeout: clearTimeoutFn });
+  runInNewContext(source, { self, caches, fetch: fetchFn, Response, ReadableStream, URL, Set, Map, Promise, JSON, Date: Clock, DOMException, AbortController, setTimeout: setTimeoutFn, clearTimeout: clearTimeoutFn });
   /** Dispatches an event: its answer (`res`), and `done` once everything it asked to wait for has. */
   const start = (type: string, props: Record<string, unknown> = {}) => {
     const waits: Promise<unknown>[] = [];
@@ -226,6 +233,12 @@ function worker(source = readFileSync(join(process.cwd(), 'public/sw.js'), 'utf8
       const due = env.timers.filter((t) => t.at <= env.now).sort((a, b) => a.at - b.at);
       env.timers = env.timers.filter((t) => t.at > env.now);
       due.forEach((t) => t.fn());
+    },
+    /** This worker's `at`-th cache lookup of `path` from now waits (then reads) until the function returned is called. */
+    holdMatch: (path: string, at = 1) => {
+      let release = () => {};
+      holdsM.set(path, { n: 0, at, p: new Promise<void>((r) => (release = r)) });
+      return release;
     },
     /** The next fetch of `path` waits until the function returned is called. */
     hold: (path: string) => {
@@ -1809,3 +1822,27 @@ test('service worker: tabs that show and then close let their build go at the ne
   await sw.post(['/', '/tools/json-graph'], 'tC');
   assert.ok(!sw.statics().some((p) => p.includes('/a-')), sw.statics().join(' '));
 });
+
+// ── Review round 5 (PR #40) ──────────────────────────────────────────────────────────────────────────
+
+test("service worker: a file that isn't hashed whose headers come past the deadline never goes in over a newer copy (review 5, finding 1)", async () => {
+  const M = '/manifest.webmanifest';
+  const sw = worker();
+  sw.serve({ ...build('a'), [M]: 'v1' });
+  await sw.install();
+  // Not cached: the answer's headers take 45 s. Meanwhile a second request gets a newer version, kept.
+  const release = sw.hold(M);
+  const first = sw.getSoon(M);
+  await settle();
+  sw.serve({ ...build('a'), [M]: 'v2' });
+  await sw.get(M);
+  assert.equal(sw.cached(M), 'v2');
+  sw.advance(45_000);
+  sw.serve({ ...build('a'), [M]: 'old' }); // (what the first request's answer carries)
+  release();
+  assert.equal(await (await first.res)!.text(), 'old', 'the page gets its answer');
+  await first.done;
+  assert.equal(sw.cached(M), 'v2');
+});
+
+

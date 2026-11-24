@@ -622,14 +622,17 @@ async function staleWhileRevalidate(event, req) {
   const hit = await cachedCopy(req);
   if (req.cache === 'only-if-cached') return hit || fetch(req);
   // A miss: the page's own request, and a clone (taken before the page reads it) for the cache. A hit: the worker's
-  // own, aborted at FETCH_MS. A copy is kept only if its body is in by then (none lands late over a newer one).
+  // own, aborted at FETCH_MS. A copy is kept only if its body is in by then, counted from the fetch's start (none
+  // lands late over a newer one).
+  const end = Date.now() + FETCH_MS;
   const net = hit ? download(req) : fetch(req);
   event.waitUntil(
     net
       .then((res) => {
         if (!cacheable(res)) return;
         const copy = hit ? res : res.clone();
-        return within(copy.arrayBuffer(), FETCH_MS, null).then((body) => body && caches.open(CACHE).then((c) => c.put(req, new Response(body, copy))));
+        if (Date.now() >= end) return copy.body.cancel();
+        return within(copy.arrayBuffer(), end - Date.now(), null).then((body) => body && caches.open(CACHE).then((c) => c.put(req, new Response(body, copy))));
       })
       .catch(() => {}),
   );
