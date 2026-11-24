@@ -1460,3 +1460,101 @@ test("service worker: a file that isn't hashed: the page reads it as it streams,
   await settle();
   assert.equal(sw.cached(M), 'v2');
 });
+
+// ── Review round 3 (PR #40) ──────────────────────────────────────────────────────────────────────────
+
+/** '/' and a page whose lazy chunk is `lazy`, in build `tag`; shared.js: a module unchanged across builds. */
+const tiny = (tag: string, lazy: string): Files => ({
+  '/': `<!doctype html><title>Home ${tag}</title><script src="/_next/static/chunks/${tag}-main.js"></script>`,
+  [`/_next/static/chunks/${tag}-main.js`]: `x.l("static/chunks/${tag}-lazy.js")`,
+  [`/_next/static/chunks/${tag}-lazy.js`]: lazy,
+  '/_next/static/chunks/shared.js': 'shared()',
+});
+const USES_SHARED = 's.l("static/chunks/shared.js")';
+const WEEK = 7 * 24 * 3600 * 1000;
+
+test("service worker: a file main's record and this one's both list stays while either still guards it (review 3, finding 1)", async () => {
+  const env = world();
+  const sw = worker(undefined, env);
+  sw.serve(build('a'));
+  await sw.install();
+  sw.tabs(['t1']);
+  await sw.post(['/'], 't1');
+  // Build b, seen on '/': build a's files are retired for the tabs open then.
+  sw.serve(build('b'));
+  await sw.visit('/', 'v');
+  sw.tabs(['t1', 'v']);
+  await sw.post(['/'], 'v');
+  // A rollback to main's worker with another build: its install retires what its '/' doesn't name, build a's
+  // files among them, in its own record, for the tabs open then (t2 among them).
+  sw.tabs(['t1', 't2']);
+  const main = worker(MAIN_SW(), env);
+  main.serve(build('c'));
+  await main.install();
+  await main.activate();
+  assert.ok(main.has('/sw.js?retired'));
+  // This worker again; t1 and v closed, t2 still open: it guards build a's files through main's record.
+  const back = worker(undefined, env);
+  await back.install();
+  await back.activate();
+  back.tabs(['t2']);
+  back.advance(61_000);
+  await back.post(['/'], 't2');
+  for (const f of filesOf('a')) assert.ok(back.has(f), f);
+  back.offline();
+  assert.deepEqual(await loadsAll(back, 't2', filesOf('a')), []);
+  back.offline(false);
+  // t2 closed too: they go.
+  back.tabs(['t3']);
+  await back.post(['/'], 't3');
+  assert.ok(!back.statics().some((p) => p.includes('/a-')), back.statics().join(' '));
+});
+
+test("service worker: past the week, a page whose files weren't all known is followed again before what it may need goes (review 3, finding 4)", async () => {
+  const sw = worker();
+  sw.serve(tiny('a', USES_SHARED));
+  await sw.install();
+  sw.tabs(['tA']);
+  await sw.post(['/'], 'tA');
+  sw.serve(tiny('b', 'b()'));
+  await sw.visit('/', 'v1');
+  sw.tabs(['tA', 'v1']);
+  // Build c, whose lazy chunk (it loads shared.js) doesn't come for over a week; its old tabs close.
+  sw.serve({ ...tiny('c', USES_SHARED), '/_next/static/chunks/c-lazy.js': 503 });
+  await sw.visit('/', 'v2');
+  sw.tabs(['tC']);
+  sw.advance(WEEK + 24 * 3600 * 1000);
+  // Then it comes, while shared.js no longer does: the report caches it, and shared.js stays.
+  sw.serve({ ...tiny('c', USES_SHARED), '/_next/static/chunks/shared.js': 404 });
+  await sw.post(['/'], 'tC');
+  assert.ok(sw.has('/_next/static/chunks/shared.js'));
+  assert.ok(!sw.has('/_next/static/chunks/a-main.js') && !sw.has('/_next/static/chunks/b-main.js'), 'what nothing needs went');
+  sw.offline();
+  assert.deepEqual(await loadsAll(sw, 'tC', ['c-main', 'c-lazy', 'shared'].map((f) => `/_next/static/chunks/${f}.js`)), []);
+});
+
+test("service worker: a page whose files stay unknown past the week, followed again in vain, is withdrawn before files go; '/' stays (review 3, finding 4)", async () => {
+  // Build b's tool page: its own chunk loads one more, which never comes.
+  const b = { ...site('b'), '/_next/static/chunks/b-tool.js': 'x.l("static/chunks/b-tl.js")', '/_next/static/chunks/b-tl.js': 503 };
+  const sw = worker();
+  sw.serve(site('a'));
+  await sw.install();
+  sw.tabs(['tA']);
+  await sw.visit('/tools/json-graph', 'tA');
+  await sw.post(['/', '/tools/json-graph'], 'tA');
+  sw.serve(b);
+  sw.tabs(['tB']);
+  await sw.visit('/tools/json-graph', 'tB');
+  await sw.post(['/', '/tools/json-graph'], 'tB');
+  // Its tabs closed: within the week, build a's files wait for the tool page's files to be known.
+  sw.tabs(['n']);
+  sw.advance(61_000);
+  await sw.post(['/'], 'n');
+  assert.ok(sw.has('/_next/static/chunks/a-main.js'));
+  // A week on, followed again in vain: the tool page is withdrawn, then build a's files go.
+  sw.advance(WEEK);
+  await sw.post(['/'], 'n');
+  assert.equal(sw.cached('/tools/json-graph'), undefined);
+  assert.match(sw.cached('/')!, /Home b/);
+  assert.ok(!sw.statics().some((p) => p.includes('/a-')), sw.statics().join(' '));
+});
