@@ -630,11 +630,27 @@ async function staleWhileRevalidate(event, req) {
     net
       .then((res) => {
         if (!cacheable(res)) return;
-        const copy = hit ? res : res.clone();
-        if (Date.now() >= end) return copy.body.cancel();
-        return within(copy.arrayBuffer(), end - Date.now(), null).then((body) => body && caches.open(CACHE).then((c) => c.put(req, new Response(body, copy))));
+        return storeBy(req, hit ? res : res.clone(), end);
       })
       .catch(() => {}),
   );
   return hit || net;
+}
+
+/**
+ * Stores `res` (a copy only the cache reads) under `req` if its body is all in by `end`: past it, the copy's read is
+ * cancelled (the page's own copy goes on) and the half-written entry fails, so nothing lands.
+ */
+function storeBy(req, res, end) {
+  const reader = res.body.getReader();
+  if (Date.now() >= end) return reader.cancel();
+  let ctl;
+  const body = new ReadableStream({ start: (c) => (ctl = c), pull: (c) => reader.read().then((r) => (r.done ? c.close() : c.enqueue(r.value))) });
+  const timer = setTimeout(() => {
+    try {
+      ctl.error(new Error('late'));
+    } catch {} // (already read in full: the entry is being written)
+    reader.cancel().catch(() => {});
+  }, end - Date.now());
+  return caches.open(CACHE).then((c) => c.put(req, new Response(body, res))).finally(() => clearTimeout(timer));
 }

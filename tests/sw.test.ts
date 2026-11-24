@@ -1845,4 +1845,25 @@ test("service worker: a file that isn't hashed whose headers come past the deadl
   assert.equal(sw.cached(M), 'v2');
 });
 
+test("service worker: past the deadline the cache lets go of a body it was reading, so a page that left ends the request (review 5, finding 2)", async () => {
+  const M = '/manifest.webmanifest';
+  const sw = worker();
+  sw.serve({ ...build('a'), [M]: 'v1' });
+  await sw.install();
+  // Not cached, and its body never ends: the page reads its first bytes, then leaves.
+  sw.env.stallBody.add(M);
+  const first = sw.getSoon(M);
+  const reader = (await first.res)!.body!.getReader();
+  await reader.read();
+  // (Cancelling one reader of a body settles once the other lets go too.)
+  const left = reader.cancel();
+  await settle();
+  assert.deepEqual(sw.env.cancelled, [], 'the cache still reads it');
+  sw.advance(30_000);
+  await settle();
+  assert.deepEqual(sw.env.cancelled, [M], 'past the deadline it lets go: the request ends');
+  await left;
+  assert.ok(await settled(first.done));
+  assert.ok(!sw.has(M));
+});
 
