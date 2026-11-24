@@ -1616,6 +1616,8 @@ test("service worker: an update's new shell goes in when it installs (review 3, 
   await v2.activate();
   v2.offline();
   assert.match((await v2.visit('/', 'off'))!, /Home b/);
+  // (With every file it names.)
+  assert.deepEqual(await loadsAll(v2, 'off', ['app.css', 'main.js', 'page.js'].map((f) => `/_next/static/chunks/b-${f}`)), []);
 });
 
 test('service worker: an update with no shell cached yet puts one in only whole (review 3, finding 5)', async () => {
@@ -1787,4 +1789,23 @@ test("service worker: a shell whose body was slow never goes in over one stored 
   await nav.done;
   assert.match(sw.cached('/')!, /Home c/);
   assert.deepEqual(sw.env.messages, []);
+});
+
+test('service worker: tabs that show and then close let their build go at the next report, with no minute to wait (review 4, test note)', async () => {
+  const sw = worker();
+  sw.serve(site('a'));
+  await sw.install();
+  sw.tabs(['tA']);
+  await sw.visit('/tools/json-graph', 'tA');
+  await sw.post(['/', '/tools/json-graph'], 'tA');
+  // Build b, from the network, in a tab listed at once; its report comes.
+  sw.serve(site('b'));
+  sw.tabs(['tA', 'tB']);
+  await sw.visit('/tools/json-graph', 'tB');
+  await sw.post(['/', '/tools/json-graph'], 'tB');
+  assert.ok(sw.has('/_next/static/chunks/a-main.js'), 'kept while they are open');
+  // Both close; a new tab reports in, the clock where it was: build a goes.
+  sw.tabs(['tC']);
+  await sw.post(['/', '/tools/json-graph'], 'tC');
+  assert.ok(!sw.statics().some((p) => p.includes('/a-')), sw.statics().join(' '));
 });
