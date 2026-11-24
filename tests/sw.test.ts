@@ -1662,3 +1662,15 @@ test("service worker: tabs are told a new version is ready whenever a new '/' go
   assert.match(de.cached('/')!, /Home b/);
   assert.deepEqual(de.env.messages, [['t', 'updated']]);
 });
+
+test('service worker: a lazy font that failed once is fetched again on a later report (review 3, finding 8)', async () => {
+  const font = '/_next/static/media/a-font.woff2';
+  const sw = worker();
+  sw.serve({ ...build('a'), [font]: 503 });
+  await sw.install();
+  await sw.post(['/']);
+  assert.ok(!sw.has(font));
+  sw.serve(build('a'));
+  await sw.post(['/']);
+  assert.ok(sw.has(font));
+});

@@ -181,6 +181,7 @@ function filesIn(url, text) {
 async function pageFiles(cache, roots, fetchMissing, deep = true, page = ORIGIN + '/', have = null) {
   const files = new Set();
   let open = false;
+  let retry = false; // a download that may work later (5xx, 408, 429, the network) failed
   const visit = async (url, required) => {
     if (files.has(url) || otherStrings(url, page)) return true;
     if (files.size >= MAX_FILES) {
@@ -197,6 +198,7 @@ async function pageFiles(cache, roots, fetchMissing, deep = true, page = ORIGIN 
         res = await download(url, { credentials: 'same-origin' });
         if (!cacheable(res)) {
           open = open || names;
+          if (res.status >= 500 || res.status === 408 || res.status === 429) retry = true;
           return !required; // (a name in a script that is no file holds no page back)
         }
         await cache.put(url, res.clone());
@@ -215,7 +217,7 @@ async function pageFiles(cache, roots, fetchMissing, deep = true, page = ORIGIN 
     return results.indexOf(false) === -1;
   };
   const results = await Promise.all(roots.map((u) => visit(u, isHashed(new URL(u).pathname))));
-  return { ok: results.indexOf(false) === -1, files, open };
+  return { ok: results.indexOf(false) === -1, files, open, retry };
 }
 
 /** Whether two pages name the same files (the same build of the same page). */
@@ -567,7 +569,7 @@ async function followPage(cache, url) {
   const key = url + ' ' + extractAssets(html).join(' ');
   if (followed.has(key)) return;
   const found = await pageFiles(cache, extractAssets(html), true, true, url);
-  if (found.ok && !found.open) followed.add(key);
+  if (found.ok && !found.open && !found.retry) followed.add(key);
 }
 
 self.addEventListener('fetch', (event) => {
