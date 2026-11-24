@@ -18,19 +18,13 @@
  * document opened at once) never shares the network or the device with 1.5 MB of
  * chunks it may not need yet.
  *
- * A localized page's dictionaries (huge mode's, the Schema view's, Flatten's:
- * /i18n/<name>-strings.<lang>.<hash>.json, named by their content) are named in its HTML,
- * its own language's only, and handled as its /_next/static files are: cached with it,
- * required, cache-first, retired after deploys. A /de visit so caches the German ones
- * and no other; English pages none. (Builds before them named huge mode's in a chunk,
- * /_next/static/media/huge-strings.<lang>.<hash>.json, every language's: followed for
- * the page's own language only.)
+ * A localized page's dictionaries (/i18n/<name>-strings.<lang>.<hash>.json, its own
+ * language's only, named in its HTML) are handled as its /_next/static files are. (Older
+ * builds named huge mode's, every language's, in a chunk: the page's language's is followed.)
  *
- * Pages are replaced whole: new HTML ('/' or any other page) goes into the cache
- * only once its files are (a 200, stored), so an interrupted visit leaves the copy
- * that works. Every /_next/static file the HTML names must make it, and the
- * network must not fail; a chunk named only inside a script that the server
- * doesn't have holds nothing back (a stray name is no file).
+ * Pages are replaced whole: new HTML goes into the cache only once every hashed file it
+ * names is, so an interrupted visit leaves the copy that works. (A name inside a script
+ * that is no file holds nothing back.)
  *
  * Deploys: when a cached page is replaced by a copy of another build, the hashed
  * files no cached page needs any more are retired, not deleted, as a generation
@@ -54,11 +48,7 @@ const LEGACY = ORIGIN + '/sw.js?retired';
 const RETIRE_MS = 7 * 24 * 3600 * 1000;
 /** Longer than a tab takes to show among the clients once its page is served (see opening). */
 const OPENING_MS = 60 * 1000;
-/**
- * The longest the worker waits on what it doesn't control: the list of tabs (CLIENTS_MS), and a download of
- * its own or the body of a page it stores (FETCH_MS). Past that it goes on without it, so every event's work,
- * and the queue of tidy-ups and page stores (see serially), comes to an end: the worker always gets idle.
- */
+/** The longest the worker waits on the list of tabs, and on a download of its own or a page's body: it always gets idle. */
 const CLIENTS_MS = 5 * 1000;
 const FETCH_MS = 30 * 1000;
 /** The most files followed for one page (the home page has about 90). */
@@ -279,12 +269,11 @@ let tidying = Promise.resolve();
 const serially = (fn) => (tidying = tidying.then(fn, fn));
 
 /**
- * The last step of storing a page (`res`, its HTML `html` already read), run through `serially`: no
- * tidy-up deletes a file between the check below and the page going in. Nothing is stored (false) when
- * another copy of another build went in since this one was fetched (`base`: the copy there then): it may
- * be newer. Unless the copy there is of the same build (or, with `partial`, there is none), every file the
- * HTML names that must make it is checked to be cached still: if one is gone, nothing is stored. Then
- * tidies up: an old copy of another build retires the files it needed. Resolves { replaced, html }.
+ * The last step of storing a page (its HTML `html` already read), in the queue: no tidy-up deletes a file
+ * between the checks and the page going in. Nothing is stored (false) if another build's copy went in since
+ * this one was fetched (`base`: the copy then), nor, unless the copy there is of the same build (or with
+ * `partial` there is none), if a hashed file the HTML names is gone. Then an old copy of another build
+ * retires its files (tidy). Resolves { replaced, html }.
  */
 async function commit(cache, key, page, res, html, partial, base) {
   const prev = await cache.match(key, MATCH);
@@ -305,10 +294,9 @@ async function commit(cache, key, page, res, html, partial, base) {
 }
 
 /**
- * Tabs being opened: every navigation, noted when it starts and dropped once its tab shows among the
- * clients, which it does a moment after its page is served (until then clients.matchAll() misses it), or
- * after OPENING_MS. It may run a cached page's build, or the network's (which may share files with an
- * old one). `id`: the id the tab will have (resultingClientId), '' in browsers without one.
+ * Tabs being opened: every navigation (it may run a cached page's build, or the network's, which may share
+ * files with an old one), until its tab shows among the clients a moment after its page is served, or
+ * OPENING_MS. `id`: resultingClientId, '' in browsers without one.
  */
 let opening = [];
 function noteOpening(id) {
@@ -370,10 +358,9 @@ async function needed(cache, keys) {
  * wait no longer: see below.
  *
  * Why no tab loses a file it needs (a tab runs a page's build, and may load any file of it later):
- *  - Every tab open, or being opened from the cache, when a page's copy is replaced is among the tabs
- *    of the generation that copy's files go to (from an older generation too: tabs opened since may have
- *    got that copy), as are all other files no cached page needs (what tabs loaded on their own: a route
- *    reached by client-side navigation, of any build). So they stay while it is open.
+ *  - Every tab open or being opened when a page's copy is replaced guards the generation its files go to
+ *    (moved from an older one too), with every other file no cached page needs (what tabs loaded on their
+ *    own: a route reached by client-side navigation, of any build).
  *  - A tab opened later got a cached page, whose files stay while it is cached and go to a generation
  *    with this tab among its tabs when it is replaced, or the network's page: the current build, whose
  *    files a later replacement retires with this tab among the tabs. A retired file such a tab reports
@@ -643,9 +630,7 @@ const asNew = (res) => new Response(res.body, { status: res.status, statusText: 
 async function staleWhileRevalidate(event, req) {
   const hit = await cachedCopy(req);
   if (req.cache === 'only-if-cached') return hit || fetch(req);
-  // One request, as the page made it (credentials, cache mode), given up whole (headers and body) at FETCH_MS: an
-  // aborted body fails the put, so nothing lands late. A hit's revalidation is stored as is; a miss's streams to the
-  // page while a copy goes in.
+  // One request, as the page made it, given up whole at FETCH_MS (an aborted body fails the put: nothing lands late).
   const net = download(req);
   event.waitUntil(net.then((res) => cacheable(res) && caches.open(CACHE).then((c) => c.put(req, hit ? res : res.clone()))).catch(() => {}));
   return hit || net;
