@@ -238,10 +238,23 @@ async function storePage(cache, key, res) {
   // (A body that stalls is given up: see FETCH_MS. A navigation's isn't one of the worker's downloads.)
   const html = await within(res.clone().text(), FETCH_MS, null);
   if (html === null) return false;
-  const old = await cache.match(key, MATCH);
-  const same = old && isHTML(old) && sameFiles(extractAssets(await old.text()), extractAssets(html));
+  const base = await htmlOf(cache, key);
+  const same = base !== null && sameFiles(extractAssets(base), extractAssets(html));
   if (!same && !(await pageFiles(cache, extractAssets(html), true, false, page)).ok) return false;
-  return serially(() => commit(cache, key, page, res, html, false));
+  return publish(cache, key, page, res, html, false, base);
+}
+
+/** The cached copy of a page as HTML text, or null. */
+const htmlOf = (cache, key) => cache.match(key, MATCH).then((r) => (r && isHTML(r) ? r.text() : null));
+
+/** commit() in its turn; a new '/' committed tells every tab a new version is ready. */
+async function publish(cache, key, page, res, html, partial, base) {
+  const done = await serially(() => commit(cache, key, page, res, html, partial, base));
+  if (done && done.replaced && page === ORIGIN + '/') {
+    const tabs = await windowTabs(true); // (another worker's too: tabs it still controls while this one installs)
+    if (tabs) tabs.forEach((c) => c.postMessage({ type: 'updated' }));
+  }
+  return done;
 }
 
 /** Cache `url` unless present (a page with its files). Resolves false when it couldn't be. */
@@ -265,16 +278,18 @@ const serially = (fn) => (tidying = tidying.then(fn, fn));
 
 /**
  * The last step of storing a page (`res`, its HTML `html` already read), run through `serially`: no
- * tidy-up deletes a file between the check below and the page going in. Unless the copy there is of the
- * same build (or, with `partial`, there is none), every file the HTML names that must make it is checked
- * to be cached still: if one is gone, nothing is stored (false). Then tidies up: an old copy of another
- * build retires the files it needed. Resolves { replaced, html }.
+ * tidy-up deletes a file between the check below and the page going in. Nothing is stored (false) when
+ * another copy of another build went in since this one was fetched (`base`: the copy there then): it may
+ * be newer. Unless the copy there is of the same build (or, with `partial`, there is none), every file the
+ * HTML names that must make it is checked to be cached still: if one is gone, nothing is stored. Then
+ * tidies up: an old copy of another build retires the files it needed. Resolves { replaced, html }.
  */
-async function commit(cache, key, page, res, html, partial) {
+async function commit(cache, key, page, res, html, partial, base) {
   const prev = await cache.match(key, MATCH);
   const old = prev && isHTML(prev) ? await prev.text() : null;
   const files = extractAssets(html);
   const same = old !== null && sameFiles(extractAssets(old), files);
+  if (!same && (old === null ? base !== null : base === null || !sameFiles(extractAssets(old), extractAssets(base)))) return false;
   if (!same && !(partial && !prev)) {
     const must = files.filter((u) => isHashed(new URL(u).pathname) && !otherStrings(u, page));
     const held = await Promise.all(must.map((u) => cache.match(u, MATCH)));
@@ -444,29 +459,24 @@ async function tidy(cache, replaced, posted, from, final) {
 /**
  * Fetch the app shell ('/'), cache its files (see the header), then swap it in. The new HTML
  * replaces the old one only once they are, so an offline load never gets HTML pointing at chunks
- * we don't have. With `stage` (installing beside an active worker), its files only: see install.
+ * we don't have.
  */
-async function refreshShell(stage) {
+async function refreshShell() {
   const cache = await caches.open(CACHE);
   const res = await download('/', { cache: 'no-cache', credentials: 'same-origin' });
   if (!cacheable(res)) return;
   const html = await res.clone().text();
-  const old = await cache.match('/', MATCH);
-  const prev = old ? extractAssets(await old.text()) : null;
+  const base = await htmlOf(cache, '/');
+  const prev = base === null ? null : extractAssets(base);
   const now = extractAssets(html);
   if (prev && sameFiles(prev, now)) {
     // The same build: its files came with it (pages post what they load); anything its HTML names that is missing, again.
     await Promise.all(now.map((u) => cacheIfMissing(cache, u)));
   } else if (!(await pageFiles(cache, now, true, false)).ok && prev) return; // flaky network or a half-done deploy: keep the consistent old shell
-  if (stage && prev) return;
-  // (With no copy yet, even a partial one: better than none offline, and the page posts the rest.)
-  const done = await serially(() => commit(cache, '/', ORIGIN + '/', res, html, true));
-  if (!done) return;
-  await refreshHomes(cache, ORIGIN + '/', html, done.replaced);
-  if (!done.replaced) return;
-  // A new deploy is cached and ready: let open tabs offer a reload.
-  const tabs = await windowTabs(false);
-  if (tabs) tabs.forEach((c) => c.postMessage({ type: 'updated' }));
+  // (On a first install, with no copy yet, even a partial one: better than none offline, and the page posts the rest.)
+  const first = !prev && !(self.registration && self.registration.active);
+  const done = await publish(cache, '/', ORIGIN + '/', res, html, first, base);
+  if (done) await refreshHomes(cache, ORIGIN + '/', html, done.replaced);
 }
 
 /**
@@ -495,11 +505,9 @@ async function refreshHomes(cache, url, html, replaced) {
 
 self.addEventListener('install', (event) => {
   self.skipWaiting();
-  // Beside an active worker (an update), the new build's files are cached, but no page is replaced nor anything
-  // retired: that worker may be storing a page meanwhile, and deletes by its own rules (main's: its own record and
-  // what '/' needs). A visit to '/', or a page from the network, brings '/' along once this one is active.
-  // (A partial precache is fine; the page posts the rest.)
-  event.waitUntil(refreshShell(!!(self.registration && self.registration.active)).catch(() => {}));
+  // The new shell goes in now; nothing is deleted while this worker installs (see arriving), and the worker before
+  // it (main's) never reads this one's record. (A partial precache is fine; the page posts the rest.)
+  event.waitUntil(refreshShell().catch(() => {}));
 });
 
 self.addEventListener('activate', (event) => {

@@ -70,6 +70,8 @@ function world() {
     online: true,
     failPut: ((): boolean => false) as (url: string) => boolean,
     fetched: [] as string[],
+    /** What tabs were told (postMessage), as [tab, type]. */
+    messages: [] as [string, string][],
     store: new Map<string, { body: string; type: string; url?: string }>(),
     /** Keys keep the fragment of the request stored (as WebKit's Cache Storage lists them); matching ignores it. */
     fragments: false,
@@ -163,7 +165,7 @@ function worker(source = readFileSync(join(process.cwd(), 'public/sw.js'), 'utf8
     addEventListener: (type: string, fn: (e: unknown) => void) => void (listeners[type] = fn),
     skipWaiting() {},
     clients: {
-      matchAll: () => (env.stallClients ? new Promise(() => {}) : Promise.resolve(env.tabs.map((id) => ({ id, postMessage() {} })))),
+      matchAll: () => (env.stallClients ? new Promise(() => {}) : Promise.resolve(env.tabs.map((id) => ({ id, postMessage: (m: { type: string }) => env.messages.push([id, m.type]) })))),
       claim: async () => {},
     },
   };
@@ -740,22 +742,16 @@ test('service worker: upgrading from the frozen production worker keeps its tabs
   const sw = worker(undefined, env);
   await sw.install();
   await sw.activate();
-  // Installing beside it cached build b's files; '/' moves at the next visit to it.
-  assert.match(sw.cached('/')!, /Home a/);
-  assert.ok(['main', 'page', 'app'].every((f) => sw.has(`/_next/static/chunks/b-${f}.${f === 'app' ? 'css' : 'js'}`)));
+  // The new shell went in at install, and nothing of build a went.
+  assert.match(sw.cached('/')!, /Home b/);
   sw.offline();
   assert.deepEqual(await loadsAll(sw, 'old', had), []);
   sw.offline(false);
-  // (That visit got build a's shell, and runs build a: its files stay while it is open too.)
   await sw.visit('/', 'n');
-  assert.match(sw.cached('/')!, /Home b/);
   sw.tabs(['old', 'n']);
   await sw.post(['/'], 'n');
   sw.tabs(['n']);
   await sw.post(['/'], 'n');
-  assert.ok(sw.has('/_next/static/chunks/a-main.js'));
-  sw.tabs(['m']);
-  await sw.post(['/'], 'm');
   assert.deepEqual(sw.statics(), filesOf('b'));
 });
 
@@ -1113,9 +1109,8 @@ test("service worker: installing deletes nothing, so a page the worker before it
   main.tabs([]);
   const sw = worker(undefined, env);
   await sw.install();
-  // (Beside main's, the install caches build b's files only: '/' stays.)
-  assert.match(sw.cached('/')!, /Home a/);
-  assert.ok(sw.has('/_next/static/chunks/b-main.js'));
+  // (The new shell goes in; nothing is deleted while this worker installs.)
+  assert.match(sw.cached('/')!, /Home b/);
   // Main's worker gets its stylesheet and stores the page; then this one takes over and a tab reports in.
   release();
   await nav.done;
@@ -1206,7 +1201,7 @@ test("service worker: a file a cached page needs through a chunk not cached yet 
 
 const MAIN_SW = () => readFileSync(join(process.cwd(), 'harness/suites/platform/fixtures/main-sw.js'), 'utf8');
 
-test("service worker: installing beside main's worker changes no page and writes no record, so main's clean-up never deletes what it is storing (review 2, finding 1)", async () => {
+test("service worker: installing beside main's worker writes no record main reads, so main's clean-up never deletes what it is storing (review 2, finding 1)", async () => {
   const env = world();
   const main = worker(MAIN_SW(), env);
   main.serve(site('a'));
@@ -1220,7 +1215,7 @@ test("service worker: installing beside main's worker changes no page and writes
   main.serve({ ...site('a'), ...site('b') });
   const sw = worker(undefined, env);
   await sw.install();
-  assert.ok(!sw.has('/sw.js?retired') && !sw.has('/sw.js?generations'), 'no record');
+  assert.ok(!sw.has('/sw.js?retired'), 'no record of main\'s');
   // A report main's worker handles meanwhile (another tab), before it stores the diff page.
   main.tabs(['x']);
   await main.post(['/'], 'x');
@@ -1586,4 +1581,84 @@ test("service worker: a page whose files stay unknown past the week, followed ag
   assert.equal(sw.cached('/tools/json-graph'), undefined);
   assert.match(sw.cached('/')!, /Home b/);
   assert.ok(!sw.statics().some((p) => p.includes('/a-')), sw.statics().join(' '));
+});
+
+test("service worker: an update's new shell goes in when it installs (review 3, finding 5)", async () => {
+  const env = world();
+  const v1 = worker(undefined, env);
+  v1.serve(build('a'));
+  await v1.install();
+  await v1.post(['/'], 't');
+  v1.serve(build('b'));
+  const v2 = worker(undefined, env);
+  await v2.install();
+  await v2.activate();
+  v2.offline();
+  assert.match((await v2.visit('/', 'off'))!, /Home b/);
+});
+
+test('service worker: an update with no shell cached yet puts one in only whole (review 3, finding 5)', async () => {
+  const env = world();
+  const v1 = worker(undefined, env);
+  v1.serve({ ...build('a'), '/': 503 });
+  await v1.install();
+  assert.ok(!v1.has('/'));
+  // The next worker installs while build b's stylesheet doesn't come: no shell without it.
+  v1.serve({ ...build('b'), '/_next/static/chunks/b-app.css': 503 });
+  const v2 = worker(undefined, env);
+  await v2.install();
+  assert.ok(!v2.has('/'));
+  // It comes: the next visit brings the shell in, whole.
+  v2.serve(build('b'));
+  await v2.activate();
+  await v2.visit('/', 'n');
+  assert.match(v2.cached('/')!, /Home b/);
+});
+
+test('service worker: a home stored late never takes the place of a newer one stored meanwhile (review 3, finding 6)', async () => {
+  // '/' has a stylesheet of its own.
+  const homed = (tag: string): Files => ({ ...site(tag), '/': html(tag, 'Home ' + tag, `<link rel="stylesheet" href="/_next/static/chunks/${tag}-home.css">`), [`/_next/static/chunks/${tag}-home.css`]: '.home{}' });
+  const sw = worker();
+  sw.serve(homed('a'));
+  await sw.install();
+  sw.tabs(['t']);
+  await sw.visit('/tools/json-graph', 't');
+  await sw.post(['/', '/tools/json-graph'], 't');
+  // Build b's tool page from the network; '/' follows, its stylesheet slow.
+  sw.serve(homed('b'));
+  const release = sw.hold('/_next/static/chunks/b-home.css');
+  const nav = sw.open('/tools/json-graph', 'b1');
+  await nav.text;
+  await settle();
+  // Build c meanwhile (the server still has build b's files): a visit to '/' stores c's.
+  sw.serve({ ...homed('b'), ...homed('c') });
+  await sw.visit('/', 'c1');
+  assert.match(sw.cached('/')!, /Home c/);
+  // Build b's stylesheet comes: its '/' doesn't go in over c's.
+  release();
+  await nav.done;
+  assert.match(sw.cached('/')!, /Home c/);
+});
+
+test("service worker: tabs are told a new version is ready whenever a new '/' goes in (review 3, finding 7)", async () => {
+  // A first visit to a tool page brings '/' along.
+  const sw = worker();
+  sw.serve(site('a'));
+  await sw.install();
+  sw.serve(site('b'));
+  sw.tabs(['t']);
+  await sw.visit('/tools/json-graph', 't');
+  assert.match(sw.cached('/')!, /Home b/);
+  assert.deepEqual(sw.env.messages, [['t', 'updated']]);
+  // A visit to '/' whose German home can't be stored.
+  const de = worker();
+  de.serve(site('a'));
+  await de.install();
+  await de.visit('/de', 'x');
+  de.serve(site('b'));
+  de.failPut((u) => u.endsWith('/de'));
+  de.tabs(['t']);
+  await de.visit('/', 't');
+  assert.match(de.cached('/')!, /Home b/);
+  assert.deepEqual(de.env.messages, [['t', 'updated']]);
 });
