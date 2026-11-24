@@ -70,6 +70,8 @@ function world() {
     online: true,
     failPut: ((): boolean => false) as (url: string) => boolean,
     fetched: [] as string[],
+    /** Each request's credentials mode, by path. */
+    creds: [] as [string, string | undefined][],
     /** What tabs were told (postMessage), as [tab, type]. */
     messages: [] as [string, string][],
     store: new Map<string, { body: string; type: string; url?: string }>(),
@@ -127,7 +129,7 @@ function worker(source = readFileSync(join(process.cwd(), 'public/sw.js'), 'utf8
       return [...env.store.entries()].map(([url, e]) => ({ url: env.fragments && e.url ? e.url : url }));
     },
   };
-  const fetchFn = async (r: string | { url: string }, init?: { signal?: AbortSignal }) => {
+  const fetchFn = async (r: string | { url: string }, init?: { signal?: AbortSignal; credentials?: string }) => {
     const url = new URL(key(r));
     const signal = init?.signal;
     const aborted = () => new DOMException('The operation was aborted.', 'AbortError');
@@ -136,6 +138,7 @@ function worker(source = readFileSync(join(process.cwd(), 'public/sw.js'), 'utf8
     if (signal?.aborted) throw aborted();
     if (!env.online) throw new TypeError('Failed to fetch');
     env.fetched.push(url.pathname);
+    env.creds.push([url.pathname, init?.credentials ?? (typeof r === 'string' ? undefined : (r as { credentials?: string }).credentials)]);
     const body = env.files[url.pathname];
     const until = env.stallBody.has(url.pathname) ? new Promise<void>(() => {}) : env.holdBody.get(url.pathname);
     if (until) {
@@ -259,6 +262,9 @@ function worker(source = readFileSync(join(process.cwd(), 'public/sw.js'), 'utf8
     env,
     /** A fetch() the page makes (not a navigation), with its cache mode: the SW's answer, null if it leaves it alone. */
     get: (path: string, cache = 'default') => dispatch('fetch', { request: { method: 'GET', url: ORIGIN + path, mode: 'cors', headers: new Headers(), destination: '', cache } }),
+    /** A page's request for `path` with its options (cache mode, credentials, mode): the SW's answer, waited for. */
+    request: (path: string, o: { cache?: string; credentials?: string; mode?: string } = {}) =>
+      dispatch('fetch', { request: { method: 'GET', url: ORIGIN + path, mode: o.mode ?? 'cors', headers: new Headers(), destination: '', cache: o.cache ?? 'default', credentials: o.credentials ?? 'same-origin' } }),
     /** The same, not waited for: the answer (`res`), and `done` once the worker is. */
     getSoon: (path: string) => start('fetch', { request: { method: 'GET', url: ORIGIN + path, mode: 'cors', headers: new Headers(), destination: '', cache: 'default' } }),
   };
@@ -1673,4 +1679,21 @@ test('service worker: a lazy font that failed once is fetched again on a later r
   sw.serve(build('a'));
   await sw.post(['/']);
   assert.ok(sw.has(font));
+});
+
+test("service worker: a file that isn't hashed is fetched once, as the page asked, and never for a cache-only request (review 3, finding 9)", async () => {
+  const M = '/manifest.webmanifest';
+  const sw = worker();
+  sw.serve({ ...build('a'), [M]: 'v1' });
+  await sw.install();
+  // Not cached, without credentials: one request, without credentials.
+  const res = await sw.request(M, { credentials: 'omit' });
+  assert.equal(await res!.text(), 'v1');
+  assert.deepEqual(sw.env.creds.filter(([p]) => p === M).map(([, c]) => c), ['omit']);
+  assert.equal(sw.cached(M), 'v1');
+  // Cached, and only-if-cached: the cached copy, no request.
+  sw.fetched.length = 0;
+  const hit = await sw.request(M, { cache: 'only-if-cached', mode: 'same-origin' });
+  assert.equal(await hit!.text(), 'v1');
+  assert.deepEqual([...sw.fetched], []);
 });
