@@ -86,6 +86,8 @@ function world() {
     tabs: [] as string[],
     /** Fetches of a path wait for these, one each (see hold). */
     holds: new Map<string, Promise<void>[]>(),
+    /** caches.open() answers a task later (as a browser's does), not at once. */
+    slowOpen: false,
     /** Runs when the cache's keys are read (a moment inside a clean-up's scan). */
     onKeys: null as null | (() => void),
     /** Paths whose answer's headers come but whose body never ends. */
@@ -140,6 +142,7 @@ function worker(source = readFileSync(join(process.cwd(), 'public/sw.js'), 'utf8
     env.fetched.push(url.pathname);
     env.creds.push([url.pathname, init?.credentials ?? (typeof r === 'string' ? undefined : (r as { credentials?: string }).credentials)]);
     const body = env.files[url.pathname];
+    const type = url.pathname.endsWith('.js') ? 'text/javascript' : url.pathname.endsWith('.css') ? 'text/css' : /\.\w+$/.test(url.pathname) ? 'application/octet-stream' : 'text/html; charset=utf-8';
     const until = env.stallBody.has(url.pathname) ? new Promise<void>(() => {}) : env.holdBody.get(url.pathname);
     if (until) {
       // (Aborting the request errors its body, as in browsers.)
@@ -150,13 +153,12 @@ function worker(source = readFileSync(join(process.cwd(), 'public/sw.js'), 'utf8
           signal?.addEventListener('abort', () => { try { c.error(aborted()); } catch {} });
         },
       });
-      const res = new Response(stream, { headers: { 'content-type': 'application/octet-stream' } });
+      const res = new Response(stream, { headers: { 'content-type': type } });
       Object.defineProperty(res, 'type', { value: 'basic' });
       return res;
     }
     if (typeof body === 'number') return response('', 'text/plain', body);
     if (body === undefined) return response('', 'text/html', 404);
-    const type = url.pathname.endsWith('.js') ? 'text/javascript' : url.pathname.endsWith('.css') ? 'text/css' : /\.\w+$/.test(url.pathname) ? 'application/octet-stream' : 'text/html; charset=utf-8';
     return response(body, type);
   };
   const listeners: Record<string, (e: unknown) => void> = {};
@@ -172,7 +174,7 @@ function worker(source = readFileSync(join(process.cwd(), 'public/sw.js'), 'utf8
       claim: async () => {},
     },
   };
-  const caches = { open: async () => cache, keys: async () => ['json-viewer-v2'], delete: async () => true };
+  const caches = { open: () => (env.slowOpen ? new Promise((r) => setTimeout(() => r(cache), 0)) : Promise.resolve(cache)), keys: async () => ['json-viewer-v2'], delete: async () => true };
   const Clock = class extends Date {};
   Object.defineProperty(Clock, 'now', { value: () => env.now });
   let timerIds = 0;
@@ -265,6 +267,13 @@ function worker(source = readFileSync(join(process.cwd(), 'public/sw.js'), 'utf8
     /** A page's request for `path` with its options (cache mode, credentials, mode): the SW's answer, waited for. */
     request: (path: string, o: { cache?: string; credentials?: string; mode?: string } = {}) =>
       dispatch('fetch', { request: { method: 'GET', url: ORIGIN + path, mode: o.mode ?? 'cors', headers: new Headers(), destination: '', cache: o.cache ?? 'default', credentials: o.credentials ?? 'same-origin' } }),
+    /** The same, the page reading the answer's body the moment it comes (as a browser does): its text, once the worker is done. */
+    read: async (path: string, o: { credentials?: string } = {}) => {
+      const { res, done } = start('fetch', { request: { method: 'GET', url: ORIGIN + path, mode: 'cors', headers: new Headers(), destination: '', cache: 'default', credentials: o.credentials ?? 'same-origin' } });
+      const text = res.then((r) => (r ? new Response(r.body).text() : null));
+      await done;
+      return text;
+    },
     /** The same, not waited for: the answer (`res`), and `done` once the worker is. */
     getSoon: (path: string) => start('fetch', { request: { method: 'GET', url: ORIGIN + path, mode: 'cors', headers: new Headers(), destination: '', cache: 'default' } }),
   };
@@ -1434,7 +1443,7 @@ test("service worker: a page's early report (files only, before its warm-up) sta
   assert.ok(sw.fetched.includes('/_next/static/chunks/a-graph.js'));
 });
 
-test("service worker: a file that isn't hashed: the page reads it as it streams, and its cache copy never lands past the deadline (review 2, finding 9)", async () => {
+test("service worker: a file that isn't hashed: the page reads it as it streams, to its end however long it takes, and its cache copy never lands past the deadline (review 2, finding 9; review 4, finding 6)", async () => {
   const M = '/manifest.webmanifest';
   const sw = worker();
   sw.serve({ ...build('a'), [M]: 'v1' });
@@ -1444,7 +1453,8 @@ test("service worker: a file that isn't hashed: the page reads it as it streams,
   sw.env.holdBody.set(M, new Promise<void>((r) => (release = r)));
   const first = sw.getSoon(M);
   const res = await first.res;
-  const chunk = await res!.body!.getReader().read();
+  const reader = res!.body!.getReader();
+  const chunk = await reader.read();
   assert.equal(new TextDecoder().decode(chunk.value), 'v1');
   // A new version on the server, fetched and kept meanwhile; then the slow one ends, past the deadline.
   sw.env.holdBody.delete(M);
@@ -1455,6 +1465,7 @@ test("service worker: a file that isn't hashed: the page reads it as it streams,
   assert.ok(await settled(first.done));
   release();
   await settle();
+  assert.ok((await reader.read()).done, 'the page reads it to its end, past the deadline');
   assert.equal(sw.cached(M), 'v2', 'the late one never overwrites it');
   // Cached: a revalidation that takes long is given up at the deadline, and nothing lands after it.
   sw.serve({ ...build('a'), [M]: 'v3' });
@@ -1737,4 +1748,16 @@ test("service worker: a German home whose files aren't all known keeps them, pas
   assert.equal(await sw.load('/_next/static/chunks/s.js', 'tDe'), 's()');
   // A German page never visited falls back to the German home.
   assert.match((await sw.visit('/de/tools/json-graph', 'x'))!, /Start v3/);
+});
+
+test("service worker: a file that isn't hashed, read by the page the moment it comes, still goes into the cache (review 4, finding 4)", async () => {
+  const M = '/manifest.webmanifest';
+  const sw = worker();
+  sw.serve({ ...build('a'), [M]: 'v1' });
+  await sw.install();
+  sw.env.slowOpen = true;
+  assert.equal(await sw.read(M), 'v1');
+  assert.equal(sw.cached(M), 'v1');
+  sw.offline();
+  assert.equal(await sw.read(M), 'v1');
 });
