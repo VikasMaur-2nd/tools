@@ -219,9 +219,10 @@ function sameFiles(a, b) {
 /**
  * Puts a page (`res`, a 200) into the cache once its files are; resolves false when they
  * couldn't be (the copy there stays), else as commit(). A copy of the same build only gets
- * fresher HTML. `base`: the cached copy's HTML (or its promise) from before the page was asked for.
+ * fresher HTML. `base`: the cached copy's HTML (or its promise) from before the page was asked for; `rev`: its
+ * commits then (see revs).
  */
-async function storePage(cache, key, res, base) {
+async function storePage(cache, key, res, base, rev) {
   if (!isHTML(res)) {
     await cache.put(key, res);
     return { replaced: false };
@@ -233,15 +234,21 @@ async function storePage(cache, key, res, base) {
   base = await base;
   const same = base !== null && sameFiles(extractAssets(base), extractAssets(html));
   if (!same && !(await pageFiles(cache, extractAssets(html), true, false, page)).ok) return false;
-  return publish(cache, key, page, res, html, false, base);
+  return publish(cache, key, page, res, html, false, base, rev);
 }
+
+/**
+ * Pages' commits while this worker runs, by URL: a navigation notes its page's count before its fetch, at once (the
+ * lookup of the copy there may come after another went in), and a count changed by commit time means a newer copy.
+ */
+const revs = new Map();
 
 /** The cached copy of a page as HTML text, or null. */
 const htmlOf = (key) => cachedCopy(key).then((r) => (r && isHTML(r) ? r.text() : null));
 
 /** commit() in its turn; a new '/' committed tells every tab a new version is ready. */
-async function publish(cache, key, page, res, html, partial, base) {
-  const done = await serially(() => commit(cache, key, page, res, html, partial, base));
+async function publish(cache, key, page, res, html, partial, base, rev) {
+  const done = await serially(() => commit(cache, key, page, res, html, partial, base, rev));
   if (done && done.replaced && page === ORIGIN + '/') {
     const tabs = await windowTabs(true); // (another worker's too: tabs it still controls while this one installs)
     if (tabs) tabs.forEach((c) => c.postMessage({ type: 'updated' }));
@@ -275,12 +282,13 @@ const serially = (fn) => (tidying = tidying.then(fn, fn));
  * `partial` there is none), if a hashed file the HTML names is gone. Then an old copy of another build
  * retires its files (tidy). Resolves { replaced, html }.
  */
-async function commit(cache, key, page, res, html, partial, base) {
+async function commit(cache, key, page, res, html, partial, base, rev) {
   const prev = await cache.match(key, MATCH);
   const old = prev && isHTML(prev) ? await prev.text() : null;
   const files = extractAssets(html);
   const same = old !== null && sameFiles(extractAssets(old), files);
   if (!same && (old === null ? base !== null : base === null || !sameFiles(extractAssets(old), extractAssets(base)))) return false;
+  if (!same && rev !== undefined && rev !== (revs.get(page) || 0)) return false;
   if (!same && !(partial && !prev)) {
     const must = files.filter((u) => isHashed(new URL(u).pathname) && !otherStrings(u, page));
     const held = await Promise.all(must.map((u) => cache.match(u, MATCH)));
@@ -288,6 +296,7 @@ async function commit(cache, key, page, res, html, partial, base) {
   }
   // (The HTML already read, as a new Response: the queue never waits on a network stream.)
   await cache.put(key, new Response(html, { status: res.status, statusText: res.statusText, headers: res.headers }));
+  revs.set(page, (revs.get(page) || 0) + 1);
   const replaced = old !== null && !same;
   await tidy(cache, replaced ? { html: old, page } : null).catch(() => {});
   return { replaced, html };
@@ -442,11 +451,10 @@ async function tidy(cache, replaced, posted, from) {
  */
 async function refreshShell() {
   const cache = await caches.open(CACHE);
-  const before = htmlOf('/'); // (the copy there before the fetch: see commit)
+  const base = await htmlOf('/'); // (the copy there before the fetch: see commit)
   const res = await download('/', { cache: 'no-cache', credentials: 'same-origin' });
   if (!cacheable(res)) return;
   const html = await res.clone().text();
-  const base = await before;
   const prev = base === null ? null : extractAssets(base);
   const now = extractAssets(html);
   if (prev && sameFiles(prev, now)) {
@@ -581,13 +589,14 @@ self.addEventListener('fetch', (event) => {
 const cachedCopy = (req) => caches.open(CACHE).then((c) => c.match(req, MATCH)).catch(() => undefined);
 
 function networkFirst(event, req) {
-  const before = htmlOf(req); // (the copy there before the fetch: see commit)
+  const rev = revs.get(req.url) || 0; // (see revs)
+  const before = htmlOf(req);
   return fetch(req).then(
     (res) => {
       // Kept with its files only (see the header): until they are, the cached copy stays. Then the homes follow.
       if (cacheable(res)) {
         const copy = res.clone();
-        event.waitUntil(caches.open(CACHE).then((cache) => storePage(cache, req, copy, before).then((r) => r && r.html && refreshHomes(cache, req.url, r.html, r.replaced))).catch(() => {}));
+        event.waitUntil(caches.open(CACHE).then((cache) => storePage(cache, req, copy, before, rev).then((r) => r && r.html && refreshHomes(cache, req.url, r.html, r.replaced))).catch(() => {}));
       }
       return res;
     },

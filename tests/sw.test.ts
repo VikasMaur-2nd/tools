@@ -1867,3 +1867,46 @@ test("service worker: past the deadline the cache lets go of a body it was readi
   assert.ok(!sw.has(M));
 });
 
+test("service worker: a page's copy taken late, after another went in, never puts an older one back (review 5, finding 3)", async () => {
+  const sw = worker();
+  sw.serve(site('a'));
+  await sw.install();
+  sw.tabs(['t']);
+  await sw.visit('/tools/json-graph', 't');
+  await sw.post(['/', '/tools/json-graph'], 't');
+  // Build b's tool page from the network, the lookup of the copy there slow.
+  sw.serve(site('b'));
+  const release = sw.holdMatch('/tools/json-graph');
+  const nav = sw.open('/tools/json-graph', 'b1');
+  assert.match((await nav.text)!, /Graph b/);
+  await settle();
+  // Build c's goes in meanwhile; then the lookup reads it: build b's doesn't go in over it.
+  sw.serve({ ...site('b'), ...site('c') });
+  await sw.visit('/tools/json-graph', 'c1');
+  assert.match(sw.cached('/tools/json-graph')!, /Graph c/);
+  release();
+  await nav.done;
+  assert.match(sw.cached('/tools/json-graph')!, /Graph c/);
+});
+
+test("service worker: a shell refresh whose lookup is slow fetches after it, never putting an older shell back (review 5, finding 3)", async () => {
+  const sw = worker();
+  sw.serve(site('a'));
+  await sw.install();
+  sw.tabs(['t']);
+  await sw.visit('/tools/json-graph', 't');
+  await sw.post(['/', '/tools/json-graph'], 't');
+  // Build b: a visit to '/' (its answer, then its refresh's lookup of the copy there, which is slow).
+  sw.serve(site('b'));
+  const release = sw.holdMatch('/', 2);
+  const nav = sw.open('/', 't2');
+  assert.match((await nav.text)!, /Home a/);
+  await settle();
+  // Build c meanwhile: a tool page brings c's shell in; then the lookup reads it.
+  sw.serve({ ...site('b'), ...site('c') });
+  await sw.visit('/tools/json-graph', 't3');
+  assert.match(sw.cached('/')!, /Home c/);
+  release();
+  await nav.done;
+  assert.match(sw.cached('/')!, /Home c/);
+});
