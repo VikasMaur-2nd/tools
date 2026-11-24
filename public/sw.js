@@ -219,9 +219,9 @@ function sameFiles(a, b) {
 /**
  * Puts a page (`res`, a 200) into the cache once its files are; resolves false when they
  * couldn't be (the copy there stays), else as commit(). A copy of the same build only gets
- * fresher HTML.
+ * fresher HTML. `base`: the cached copy's HTML (or its promise) from before the page was asked for.
  */
-async function storePage(cache, key, res) {
+async function storePage(cache, key, res, base) {
   if (!isHTML(res)) {
     await cache.put(key, res);
     return { replaced: false };
@@ -230,14 +230,14 @@ async function storePage(cache, key, res) {
   // (A body that stalls is given up: see FETCH_MS. A navigation's isn't one of the worker's downloads.)
   const html = await within(res.clone().text(), FETCH_MS, null);
   if (html === null) return false;
-  const base = await htmlOf(cache, key);
+  base = await base;
   const same = base !== null && sameFiles(extractAssets(base), extractAssets(html));
   if (!same && !(await pageFiles(cache, extractAssets(html), true, false, page)).ok) return false;
   return publish(cache, key, page, res, html, false, base);
 }
 
 /** The cached copy of a page as HTML text, or null. */
-const htmlOf = (cache, key) => cache.match(key, MATCH).then((r) => (r && isHTML(r) ? r.text() : null));
+const htmlOf = (key) => cachedCopy(key).then((r) => (r && isHTML(r) ? r.text() : null));
 
 /** commit() in its turn; a new '/' committed tells every tab a new version is ready. */
 async function publish(cache, key, page, res, html, partial, base) {
@@ -254,7 +254,7 @@ async function cacheIfMissing(cache, url) {
   if (await cache.match(url, MATCH)) return true;
   try {
     const res = await download(url, { credentials: 'same-origin' });
-    return cacheable(res) && !!(await storePage(cache, url, res));
+    return cacheable(res) && !!(await storePage(cache, url, res, null));
   } catch {
     return false;
   }
@@ -442,10 +442,11 @@ async function tidy(cache, replaced, posted, from) {
  */
 async function refreshShell() {
   const cache = await caches.open(CACHE);
+  const before = htmlOf('/'); // (the copy there before the fetch: see commit)
   const res = await download('/', { cache: 'no-cache', credentials: 'same-origin' });
   if (!cacheable(res)) return;
   const html = await res.clone().text();
-  const base = await htmlOf(cache, '/');
+  const base = await before;
   const prev = base === null ? null : extractAssets(base);
   const now = extractAssets(html);
   if (prev && sameFiles(prev, now)) {
@@ -474,10 +475,11 @@ async function refreshHomes(cache, url, html, replaced) {
       const p = new URL(k.url).pathname;
       if (p === path || !/^\/(?:[a-z]{2})?$/.test(p)) return;
       const home = await cache.match(k, MATCH);
-      const theirs = home && buildOf(await home.text());
+      const text = home && isHTML(home) ? await home.text() : null;
+      const theirs = text && buildOf(text);
       if (build && theirs ? theirs === build : !replaced || (p !== '/' && p !== langHome(path))) return;
       const res = await download(p, { cache: 'no-cache', credentials: 'same-origin' }).catch(() => null);
-      if (cacheable(res)) await storePage(cache, ORIGIN + p, res);
+      if (cacheable(res)) await storePage(cache, ORIGIN + p, res, text);
     }),
   );
 }
@@ -581,12 +583,13 @@ self.addEventListener('fetch', (event) => {
 const cachedCopy = (req) => caches.open(CACHE).then((c) => c.match(req, MATCH)).catch(() => undefined);
 
 function networkFirst(event, req) {
+  const before = htmlOf(req); // (the copy there before the fetch: see commit)
   return fetch(req).then(
     (res) => {
       // Kept with its files only (see the header): until they are, the cached copy stays. Then the homes follow.
       if (cacheable(res)) {
         const copy = res.clone();
-        event.waitUntil(caches.open(CACHE).then((cache) => storePage(cache, req, copy).then((r) => r && r.html && refreshHomes(cache, req.url, r.html, r.replaced))).catch(() => {}));
+        event.waitUntil(caches.open(CACHE).then((cache) => storePage(cache, req, copy, before).then((r) => r && r.html && refreshHomes(cache, req.url, r.html, r.replaced))).catch(() => {}));
       }
       return res;
     },

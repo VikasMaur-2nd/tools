@@ -1761,3 +1761,30 @@ test("service worker: a file that isn't hashed, read by the page the moment it c
   sw.offline();
   assert.equal(await sw.read(M), 'v1');
 });
+
+test("service worker: a shell whose body was slow never goes in over one stored meanwhile, nor tells the tabs again (review 4, finding 5)", async () => {
+  const sw = worker();
+  sw.serve(site('a'));
+  await sw.install();
+  sw.tabs(['t']);
+  await sw.visit('/tools/json-graph', 't');
+  await sw.post(['/', '/tools/json-graph'], 't');
+  // Build b: a visit to '/' refreshes it, but the new shell's body is slow.
+  sw.serve(site('b'));
+  let release = () => {};
+  sw.env.holdBody.set('/', new Promise<void>((r) => (release = r)));
+  const nav = sw.open('/', 't2');
+  assert.match((await nav.text)!, /Home a/);
+  await settle();
+  sw.env.holdBody.delete('/');
+  // Build c meanwhile (the server still has build b's files): a tool page brings c's shell in.
+  sw.serve({ ...site('b'), ...site('c') });
+  await sw.visit('/tools/json-graph', 't3');
+  assert.match(sw.cached('/')!, /Home c/);
+  sw.env.messages.length = 0;
+  // Build b's shell finishes: it doesn't go in over c's.
+  release();
+  await nav.done;
+  assert.match(sw.cached('/')!, /Home c/);
+  assert.deepEqual(sw.env.messages, []);
+});
