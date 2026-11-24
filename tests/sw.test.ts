@@ -599,8 +599,10 @@ test('service worker: a file a cached page needs again is kept for the tabs of t
   await sw.post(['/tools/json-graph'], 't4');
   assert.ok(!sw.has('/_next/static/chunks/m1.js'));
   assert.equal(await sw.load('/_next/static/chunks/shared.js', 't3'), 'shared()');
-  sw.tabs(['t4']);
-  await sw.post(['/tools/json-graph'], 't4');
+  // t4, still opening when build 3 was replaced, guards it too: once it closes, only build 4 is left.
+  sw.tabs(['t5']);
+  sw.advance(61_000);
+  await sw.post(['/tools/json-graph'], 't5');
   assert.deepEqual(sw.statics(), ['/_next/static/chunks/m4.js']);
 });
 
@@ -626,7 +628,7 @@ test('service worker: a download that stalls or fails never holds back the clean
   await settle();
   sw.serve({ ...site('c'), '/_next/static/chunks/b-tool.js': 'tool()', '/_next/static/chunks/slow.js': 'slow()' });
   await sw.visit('/', 'v3');
-  sw.tabs(['n', 'v3']);
+  sw.tabs(['n', 'n2', 'v3']); // (n2's tab shows, its page still coming)
   await sw.post(['/'], 'v3');
   sw.tabs(['n3']);
   await sw.visit('/de', 'n3');
@@ -994,9 +996,10 @@ test('service worker: after a deploy, an old build\'s dictionaries go once its t
   await sw.post(['/'], 'tab-b');
   // The tab of build a is still open: its dictionary stays.
   assert.ok(sw.has(a) && sw.has(b));
-  // Closed: it goes with build a's chunks.
-  sw.tabs(['tab-b']);
-  await sw.post(['/de'], 'tab-b');
+  // Closed, and the tab still opening then (build b's) too: it goes with build a's chunks.
+  sw.tabs(['tab-c']);
+  sw.advance(61_000);
+  await sw.post(['/de'], 'tab-c');
   assert.deepEqual([sw.has(a), sw.has(b), sw.has('/_next/static/chunks/a-main.js')], [false, true, false]);
 });
 
@@ -1064,8 +1067,9 @@ test('service worker: a home that failed to follow a tool page to its new build 
   sw.tabs(['b2']);
   await sw.visit('/tools/json-graph', 'b2');
   assert.match(sw.cached('/')!, /Home b/);
-  // And build a's files go once the tabs open at the deploys are closed.
+  // And build a's files go once the tabs open (or opening) at the deploys are closed.
   sw.tabs(['b3']);
+  sw.advance(61_000);
   await sw.post(['/', '/tools/json-graph'], 'b3');
   assert.ok(!sw.statics().some((p) => p.includes('/a-')), sw.statics().join(' '));
 });
@@ -1152,8 +1156,9 @@ test("service worker: a file the new build's tab loaded on its own stays while t
   sw.offline();
   assert.equal(await sw.load('/_next/static/chunks/b-diff.js', 'T'), 'diff()');
   sw.offline(false);
-  // That tab closed: it goes.
+  // That tab closed (and a minute on): it goes.
   sw.tabs(['U']);
+  sw.advance(61_000);
   await sw.post(['/'], 'U');
   assert.ok(!sw.has('/_next/static/chunks/b-diff.js'));
   assert.ok(!sw.statics().some((p) => p.includes('/a-')));
@@ -1508,6 +1513,30 @@ test("service worker: a file main's record and this one's both list stays while 
   back.tabs(['t3']);
   await back.post(['/'], 't3');
   assert.ok(!back.statics().some((p) => p.includes('/a-')), back.statics().join(' '));
+});
+
+test('service worker: a tab opened from the network guards what a deploy retires before it shows among the tabs (review 3, finding 3)', async () => {
+  // l.js: named by build a's home (its main chunk), by no page of build b, but by build b's diff route.
+  const a = { ...site('a'), '/_next/static/chunks/a-main.js': 'x.l("static/chunks/a-graph.js");x.l("static/chunks/l.js")', '/_next/static/chunks/l.js': 'l()' };
+  const b = { ...site('b'), '/_next/static/chunks/b-diff.js': 'x.l("static/chunks/l.js")', '/_next/static/chunks/l.js': 'l()' };
+  const sw = worker();
+  sw.serve(a);
+  await sw.install();
+  sw.tabs(['tA']);
+  await sw.visit('/tools/json-graph', 'tA');
+  await sw.post(['/', '/tools/json-graph'], 'tA');
+  // Build b: build a's tab closed, a first tab gets the tool page from the network, and '/' follows, all before
+  // that tab shows among the clients.
+  sw.serve(b);
+  sw.tabs([]);
+  await sw.visit('/tools/json-graph', 'T');
+  assert.match(sw.cached('/')!, /Home b/);
+  // It shows, reaches the diff route; another tab reports in; then the network goes: l.js still comes.
+  sw.tabs(['T', 'U']);
+  assert.equal(await sw.load('/_next/static/chunks/b-diff.js', 'T'), 'x.l("static/chunks/l.js")');
+  await sw.post(['/'], 'U');
+  sw.offline();
+  assert.equal(await sw.load('/_next/static/chunks/l.js', 'T'), 'l()');
 });
 
 test("service worker: past the week, a page whose files weren't all known is followed again before what it may need goes (review 3, finding 4)", async () => {

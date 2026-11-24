@@ -288,19 +288,15 @@ async function commit(cache, key, page, res, html, partial) {
 }
 
 /**
- * Tabs being opened from the cache: navigations that may get a cached page (an old build's,
- * perhaps), noted when they start and dropped once they get the network's page instead, or once
- * their tab shows among the clients, which it does a moment after its page is served (until then
- * clients.matchAll() misses it), or after OPENING_MS. Keyed by navigation; `id`: the id the tab
- * will have (resultingClientId), '' in browsers without one.
+ * Tabs being opened: every navigation, noted when it starts and dropped once its tab shows among the
+ * clients, which it does a moment after its page is served (until then clients.matchAll() misses it), or
+ * after OPENING_MS. It may run a cached page's build, or the network's (which may share files with an
+ * old one). `id`: the id the tab will have (resultingClientId), '' in browsers without one.
  */
-const opening = new Map();
+let opening = [];
 function noteOpening(id) {
-  const key = {};
   const now = Date.now();
-  opening.forEach((o, k) => now - o.at > OPENING_MS && opening.delete(k));
-  opening.set(key, { id: id || '', at: now });
-  return key;
+  opening = opening.filter((o) => now - o.at <= OPENING_MS).concat({ id: id || '', at: now });
 }
 
 /**
@@ -313,13 +309,10 @@ async function liveTabs() {
   if (!tabs) return null;
   const ids = new Set(tabs.map((c) => c.id));
   const now = Date.now();
-  let unnamed = false;
-  opening.forEach((o, key) => {
-    if (ids.has(o.id) || now - o.at > OPENING_MS) opening.delete(key); // a client like any other from now on, or never one
-    else if (o.id) ids.add(o.id);
-    else unnamed = true;
-  });
-  return { ids, unnamed };
+  // (One that shows is a client like any other from now on; one that never does, after OPENING_MS, none.)
+  opening = opening.filter((o) => !ids.has(o.id) && now - o.at <= OPENING_MS);
+  opening.forEach((o) => (o.id ? ids.add(o.id) : 0));
+  return { ids, unnamed: opening.some((o) => !o.id) };
 }
 
 /** Among a generation's tabs: one being opened without an id when it began, or tabs unknown (see tidy). */
@@ -578,21 +571,14 @@ self.addEventListener('fetch', (event) => {
   if (url.origin !== ORIGIN || bypass(url, req.headers)) return;
 
   if (req.mode === 'navigate') {
-    // The tab may get an old build from the cache: one being opened (see opening) until it gets the network's page.
-    const tab = noteOpening(event.resultingClientId);
+    noteOpening(event.resultingClientId); // (see opening)
     if (url.pathname === '/') {
       // Stale-while-revalidate the shell; query strings (utm_*, etc.) are ignored.
       const hit = cachedCopy('/');
-      event.respondWith(
-        hit.then((res) => {
-          if (res) return res;
-          opening.delete(tab);
-          return fetch(req);
-        }),
-      );
+      event.respondWith(hit.then((res) => res || fetch(req)));
       event.waitUntil(hit.then(() => refreshShell()).catch(() => {}));
     } else {
-      event.respondWith(networkFirst(event, req, tab));
+      event.respondWith(networkFirst(event, req));
     }
   } else if (isHashed(url.pathname)) {
     event.respondWith(cacheFirst(event, req));
@@ -607,11 +593,9 @@ self.addEventListener('fetch', (event) => {
  */
 const cachedCopy = (req) => caches.open(CACHE).then((c) => c.match(req, MATCH)).catch(() => undefined);
 
-/** `tab`: the navigation's entry among the tabs being opened (see opening). */
-function networkFirst(event, req, tab) {
+function networkFirst(event, req) {
   return fetch(req).then(
     (res) => {
-      opening.delete(tab); // the network's page: the current build
       // Kept with its files only (see the header): until they are, the cached copy stays. Then the homes follow.
       if (cacheable(res)) {
         const copy = res.clone();
