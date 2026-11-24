@@ -9,14 +9,10 @@
  *  never touched        cross-origin, non-GET, /_vercel/* and /relay/* (analytics), RSC requests,
  *                       no-store requests (what the page fetches for the visitor: a document or schema by URL)
  *
- * What a page needs offline, its files: what its HTML names (scripts, styles,
- * fonts, icons), every chunk those scripts can load later ("static/chunks/…"
- * names inside them: features loaded on first use, workers), followed on, and
- * the fonts its stylesheets name (subsets only some text loads). What the HTML
- * names comes with the page; the rest is followed when the page reports in after
- * its warm-up (its 'cache' message), so a first visit's own loading (and a big
- * document opened at once) never shares the network or the device with 1.5 MB of
- * chunks it may not need yet.
+ * A page's files: what its HTML names, every chunk its scripts can load later (names
+ * inside them, followed on) and the fonts its stylesheets name. What the HTML names comes
+ * with the page; the rest once the page reports in after its warm-up (its 'cache'
+ * message), so a first visit never shares the network with chunks it may not need yet.
  *
  * A localized page's dictionaries (/i18n/<name>-strings.<lang>.<hash>.json, its own
  * language's only, named in its HTML) are handled as its /_next/static files are. (Older
@@ -26,16 +22,11 @@
  * names is, so an interrupted visit leaves the copy that works. (A name inside a script
  * that is no file holds nothing back.)
  *
- * Deploys: when a cached page is replaced by a copy of another build, the hashed
- * files no cached page needs any more are retired, not deleted, as a generation
- * kept with every tab open then, and those being opened from the cache: they may
- * run the old build and load any chunk of it later (offline too). A generation's
- * files are deleted once all its tabs are closed, or RETIRE_MS after it, unless a
- * cached page needs them. The record ('/sw.js?generations') is never served, and
- * the worker before this one (main's) never reads it. A page from the network
- * brings the cached homes ('/', /de…) of another build along, so a visitor who
- * never opens '/' gets the same clean-up. Why no tab loses a file it needs: see
- * tidy().
+ * Deploys: when a cached page is replaced by another build's copy, the hashed files no
+ * cached page needs are retired as a generation, kept with every tab open or opening
+ * then (each may run the old build). They go once those tabs are closed, or RETIRE_MS
+ * on (see tidy). The record ('/sw.js?generations') is never served; main's worker never
+ * reads it. A page from the network brings cached homes of another build along.
  */
 const VERSION = 'v2';
 const PREFIX = 'json-viewer-';
@@ -237,10 +228,7 @@ async function storePage(cache, key, res, base, rev) {
   return publish(cache, key, page, res, html, false, base, rev);
 }
 
-/**
- * Pages' commits while this worker runs, by URL: a navigation notes its page's count before its fetch, at once (the
- * lookup of the copy there may come after another went in), and a count changed by commit time means a newer copy.
- */
+/** Pages' commits while this worker runs, by URL: a navigation notes its page's count before its fetch (see commit). */
 const revs = new Map();
 
 /** The cached copy of a page as HTML text, or null. */
@@ -267,11 +255,7 @@ async function cacheIfMissing(cache, url) {
   }
 }
 
-/**
- * One at a time: tidy-ups (each reads and writes the record) and the last step of storing a page (see
- * commit). Both read the cache and the list of tabs only (that one bounded: see CLIENTS_MS), never the
- * network: a stalled download never holds the queue up.
- */
+/** One at a time: tidy-ups and the last step of storing a page (commit); neither waits on the network. */
 let tidying = Promise.resolve();
 const serially = (fn) => (tidying = tidying.then(fn, fn));
 
@@ -366,19 +350,14 @@ async function needed(cache, keys) {
  * aren't all known (see needed).
  *
  * Why no tab loses a file it needs (a tab runs a page's build, and may load any file of it later):
- *  - Every tab open or being opened when a page's copy is replaced guards the generation its files go to
- *    (moved from an older one too), with every other file no cached page needs (what tabs loaded on their
- *    own: a route reached by client-side navigation, of any build).
- *  - A tab opened later got a cached page, whose files stay while it is cached and go to a generation
- *    with this tab among its tabs when it is replaced, or the network's page: the current build, whose
- *    files a later replacement retires with this tab among the tabs. A retired file such a tab reports
- *    it loaded leaves its generation (to be retired again by a later replacement).
- *  - Deleting checks the cached pages again, with all their files known, and every generation that stays:
- *    a file one of them needs or holds stays. While a page's files aren't all known, nothing goes, past
- *    RETIRE_MS too (lingering, never a page broken offline): its reports follow it again, and a visit or a
- *    new build replaces it.
- * A tab being opened without an id stands as UNSEEN: OPENING_MS later, every tab open then takes its
- * place (it among them, if it is still open).
+ *  - Every tab open or opening when a page's copy is replaced guards the generation its files (and every
+ *    other file no cached page needs: routes reached by client-side navigation) go to.
+ *  - A tab opened later got a cached page (its files stay while it is cached) or the network's (the
+ *    current build, retired later with this tab among the tabs). A retired file it reports loading leaves
+ *    its generation.
+ *  - Deleting re-checks the cached pages, all their files known, and the generations that stay. While a
+ *    page's files aren't all known nothing goes, past RETIRE_MS too: lingering, never a page broken offline.
+ * A tab opening without an id stands as UNSEEN: OPENING_MS later, the tabs open then take its place.
  */
 async function tidy(cache, replaced, posted, from) {
   const saved = await cache.match(RECORD);
