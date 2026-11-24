@@ -354,8 +354,7 @@ async function needed(cache, keys) {
  * Retires and deletes old builds' files (see the header). Run through `serially` only. `replaced`:
  * { html, page } when a cached page's copy was just replaced by another build's; `posted`: the files
  * a tab (`from`, its id) reports it loaded. Resolves true when deleting waited for pages whose files
- * aren't all known (see needed); with `final` (they were just followed again), expired generations
- * wait no longer: see below.
+ * aren't all known (see needed).
  *
  * Why no tab loses a file it needs (a tab runs a page's build, and may load any file of it later):
  *  - Every tab open or being opened when a page's copy is replaced guards the generation its files go to
@@ -366,14 +365,13 @@ async function needed(cache, keys) {
  *    files a later replacement retires with this tab among the tabs. A retired file such a tab reports
  *    it loaded leaves its generation (to be retired again by a later replacement).
  *  - Deleting checks the cached pages again, with all their files known, and every generation that stays:
- *    a file one of them needs or holds stays. While a page's files aren't all known, deleting waits; its
- *    reports follow it again. A generation past RETIRE_MS waits only for that: if it doesn't help, such a
- *    page is withdrawn (a later visit brings it back whole) before anything goes, '/' excepted (every
- *    page's offline fallback; refreshed from the network once its build changes).
+ *    a file one of them needs or holds stays. While a page's files aren't all known, nothing goes, past
+ *    RETIRE_MS too (lingering, never a page broken offline): its reports follow it again, and a visit or a
+ *    new build replaces it.
  * A tab being opened without an id stands as UNSEEN: OPENING_MS later, every tab open then takes its
  * place (it among them, if it is still open).
  */
-async function tidy(cache, replaced, posted, from, final) {
+async function tidy(cache, replaced, posted, from) {
   const saved = await cache.match(RECORD);
   // Main's record (written before this worker, or by main's brought back): taken in as a generation (with the tabs
   // open now, as its next deploy would have had them), then dropped: main's worker never acts on this one's.
@@ -419,19 +417,11 @@ async function tidy(cache, replaced, posted, from, final) {
     const urls = Array.from(cached).filter((u) => isHashed(new URL(u).pathname) && !need.keep.has(u) && !held.has(u));
     if (urls.length) gens.push({ urls, clients: ids.concat(unseen), at: now });
   }
-  const expired = (g) => now - g.at >= RETIRE_MS;
-  let done = live ? gens.filter((g) => !g.clients.length || expired(g)) : [];
+  let done = live ? gens.filter((g) => !g.clients.length || now - g.at >= RETIRE_MS) : [];
   let waited = false;
   if (done.length) {
     need = need || (await needed(cache, await cache.keys()));
-    if (need.open.length && final && done.some(expired) && !arriving()) {
-      await Promise.all(need.open.filter((u) => new URL(u).pathname !== '/').map((u) => cache.delete(u)));
-      need = await needed(cache, await cache.keys());
-    }
-    if (need.open.length) {
-      waited = true;
-      done = final ? done.filter(expired) : [];
-    }
+    if (need.open.length) [waited, done] = [true, []];
   }
   // (Checked right before the deletions go out: see arriving.)
   const stays = new Set([].concat(...gens.filter((g) => done.indexOf(g) === -1).map((g) => g.urls)));
@@ -536,7 +526,7 @@ self.addEventListener('message', (event) => {
           // Deleting waited for cached pages whose files aren't all known: those are followed again, then it runs again.
           const { open } = await needed(cache, await cache.keys());
           await Promise.all(open.map((u) => followPage(cache, u)));
-          await serially(() => tidy(cache, null, null, null, true));
+          await serially(() => tidy(cache));
         })
         .catch(() => {});
     }),

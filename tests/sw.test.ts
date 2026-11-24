@@ -1305,17 +1305,18 @@ test('service worker: a lazy script that failed once is fetched again on a later
   assert.ok(!sw.statics().some((p) => p.includes('/a-')), sw.statics().join(' '));
 });
 
-test('service worker: a page whose files stay unknown holds a clean-up for RETIRE_MS at most (review 2, finding 3)', async () => {
+test('service worker: a page whose files stay unknown holds the clean-up until they are known, past the week too (review 2, finding 3; review 4, finding 3)', async () => {
   const sw = worker();
   await deployed(sw, { ...build('b'), '/_next/static/chunks/b-graph.js': 503 });
   await sw.post(['/'], 'n');
-  sw.advance(6 * 24 * 3600 * 1000);
+  sw.advance(8 * 24 * 3600 * 1000);
   await sw.post(['/'], 'n');
-  assert.ok(sw.has('/_next/static/chunks/a-main.js'), 'still within the week');
-  sw.advance(2 * 24 * 3600 * 1000);
+  assert.ok(sw.has('/_next/static/chunks/a-main.js'), 'lingers, the page stays whole');
+  assert.match(sw.cached('/')!, /Home b/);
+  // Its chunk comes: build a goes at that report.
+  sw.serve(build('b'));
   await sw.post(['/'], 'n');
   assert.ok(!sw.statics().some((p) => p.includes('/a-')), sw.statics().join(' '));
-  assert.match(sw.cached('/')!, /Home b/, 'the page stays');
 });
 
 test("service worker: a lazy chunk's 404 during a deploy isn't taken for a name that is no file (review 2, finding 4)", async () => {
@@ -1563,7 +1564,7 @@ test("service worker: past the week, a page whose files weren't all known is fol
   assert.deepEqual(await loadsAll(sw, 'tC', ['c-main', 'c-lazy', 'shared'].map((f) => `/_next/static/chunks/${f}.js`)), []);
 });
 
-test("service worker: a page whose files stay unknown past the week, followed again in vain, is withdrawn before files go; '/' stays (review 3, finding 4)", async () => {
+test('service worker: a page whose files stay unknown past the week is never withdrawn; its old build lingers until they are known (review 3, finding 4; review 4, finding 3)', async () => {
   // Build b's tool page: its own chunk loads one more, which never comes.
   const b = { ...site('b'), '/_next/static/chunks/b-tool.js': 'x.l("static/chunks/b-tl.js")', '/_next/static/chunks/b-tl.js': 503 };
   const sw = worker();
@@ -1581,11 +1582,14 @@ test("service worker: a page whose files stay unknown past the week, followed ag
   sw.advance(61_000);
   await sw.post(['/'], 'n');
   assert.ok(sw.has('/_next/static/chunks/a-main.js'));
-  // A week on, followed again in vain: the tool page is withdrawn, then build a's files go.
+  // A week on, followed again in vain: still nothing goes, the tool page stays.
   sw.advance(WEEK);
   await sw.post(['/'], 'n');
-  assert.equal(sw.cached('/tools/json-graph'), undefined);
-  assert.match(sw.cached('/')!, /Home b/);
+  assert.match(sw.cached('/tools/json-graph')!, /Graph b/);
+  assert.ok(sw.has('/_next/static/chunks/a-main.js'));
+  // Its chunk comes: then build a goes.
+  sw.serve({ ...b, '/_next/static/chunks/b-tl.js': 'tl()' });
+  await sw.post(['/', '/tools/json-graph'], 'n');
   assert.ok(!sw.statics().some((p) => p.includes('/a-')), sw.statics().join(' '));
 });
 
@@ -1696,4 +1700,41 @@ test("service worker: a file that isn't hashed is fetched once, as the page aske
   const hit = await sw.request(M, { cache: 'only-if-cached', mode: 'same-origin' });
   assert.equal(await hit!.text(), 'v1');
   assert.deepEqual([...sw.fetched], []);
+});
+
+// ── Review round 4 (PR #40) ──────────────────────────────────────────────────────────────────────────
+
+/** A page of build `tag` naming `scripts` (and its build id, as Next's RSC payload does). */
+const page = (tag: string, title: string, scripts: string[]) =>
+  `<!doctype html><title>${title}</title>${scripts.map((s) => `<script src="/_next/static/chunks/${s}"></script>`).join('')}<script>self.__next_f.push([1,"{\\"b\\":\\"${tag}\\"}"])</script>`;
+
+test("service worker: a German home whose files aren't all known keeps them, past the week and offline, and stays the German fallback (review 4, finding 3)", async () => {
+  const sw = worker();
+  // Build 1's shell loads s.js (a module unchanged across builds); build 2's doesn't.
+  sw.serve({ '/': page('v1', 'Home v1', ['v1-main.js']), '/_next/static/chunks/v1-main.js': 'x.l("static/chunks/s.js")', '/_next/static/chunks/s.js': 's()' });
+  await sw.install();
+  sw.tabs(['t1']);
+  await sw.post(['/'], 't1');
+  sw.serve({ '/': page('v2', 'Home v2', ['v2-main.js']), '/_next/static/chunks/v2-main.js': 'main()' });
+  await sw.visit('/', 'v');
+  // Build 3's German home loads s.js again, and a chunk that doesn't come.
+  sw.serve({
+    '/': page('v3', 'Home v3', ['v3-main.js']),
+    '/de': page('v3', 'Start v3', ['v3-main.js', 'v3-de.js']),
+    '/_next/static/chunks/v3-main.js': 'main()',
+    '/_next/static/chunks/v3-de.js': 'x.l("static/chunks/s.js");x.l("static/chunks/v3-l.js")',
+    '/_next/static/chunks/s.js': 's()',
+    '/_next/static/chunks/v3-l.js': 503,
+  });
+  sw.tabs(['tDe']);
+  await sw.visit('/de', 'tDe');
+  await sw.post(['/', '/de'], 'tDe');
+  // The generation holding s.js (from build 1) expires; the German tab reports in, offline.
+  sw.advance(WEEK + 24 * 3600 * 1000);
+  sw.offline();
+  await sw.post(['/de'], 'tDe');
+  assert.match(sw.cached('/de')!, /Start v3/);
+  assert.equal(await sw.load('/_next/static/chunks/s.js', 'tDe'), 's()');
+  // A German page never visited falls back to the German home.
+  assert.match((await sw.visit('/de/tools/json-graph', 'x'))!, /Start v3/);
 });
