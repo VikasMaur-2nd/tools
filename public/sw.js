@@ -461,10 +461,8 @@ async function refreshShell() {
 
 /**
  * After a page from the network (`url`, its HTML `html`) is stored: each cached home ('/', /de…) of another
- * build is brought to the network's copy (stored whole). Unvisited pages fall back to them offline, and their
- * old build can go although this visitor may never open them again. One that can't be now is still of another
- * build after the next page from the network, and tried again then. (Without build ids: '/' and the page's
- * language home, when the page replaced a copy of another build, `replaced`.)
+ * build follows it (unvisited pages fall back to them offline, and their old build can go). One that can't now
+ * is tried again after the next page. (Without build ids: '/' and the page's home, if it `replaced` another build.)
  */
 async function refreshHomes(cache, url, html, replaced) {
   const path = new URL(url).pathname;
@@ -623,9 +621,8 @@ const asNew = (res) => new Response(res.body, { status: res.status, statusText: 
 async function staleWhileRevalidate(event, req) {
   const hit = await cachedCopy(req);
   if (req.cache === 'only-if-cached') return hit || fetch(req);
-  // A miss: the page's own request, untouched, and a clone (taken before the page reads it) for the cache. A hit: a
-  // revalidation of the worker's own, aborted at FETCH_MS. The cache gets a copy only if its body is in by then:
-  // one that comes later never lands over a newer one.
+  // A miss: the page's own request, and a clone (taken before the page reads it) for the cache. A hit: the worker's
+  // own, aborted at FETCH_MS. A copy is kept only if its body is in by then (none lands late over a newer one).
   const net = hit ? download(req) : fetch(req);
   event.waitUntil(
     net
