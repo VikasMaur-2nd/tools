@@ -4686,12 +4686,21 @@ export class Engine {
             () => import('../convert/xlsx'),
             () => import('../json/smart'),
           ];
+          // Each step when the page is idle, or 6 s later all the same (Firefox may hold a window's idle callbacks
+          // back), and past a module that doesn't arrive in 20 s: the files always reach the SW. ('tk:sw-warm' marks
+          // each step, for tests.)
+          const step = (fn: () => void) => {
+            let ran = false;
+            const run = () => void (ran || ((ran = true), performance.mark('tk:sw-warm'), fn()));
+            idle(run);
+            setTimeout(run, 6000);
+          };
           const next = () => {
             const load = mods.shift();
-            if (load) return void load().then(() => idle(next), () => idle(next));
+            if (load) return void Promise.race([load(), new Promise((r) => setTimeout(r, 20_000))]).then(() => step(next), () => step(next));
             post(true);
           };
-          idle(next);
+          step(next);
         })
         .catch(() => {});
     };

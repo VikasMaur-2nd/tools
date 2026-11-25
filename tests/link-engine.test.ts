@@ -224,8 +224,10 @@ test("the offline checks' WATCH_POSTS counts the warm-up's post, not links' earl
   const s = session({ globals: {
     process: { env: { NODE_ENV: 'production' } },
     navigator: { serviceWorker: new browser.ServiceWorkerContainer() },
-    document: { readyState: 'complete' }, window: { addEventListener: () => {} }, setTimeout: (f: () => void) => f(),
-    performance: { now: () => performance.now(), getEntriesByType: () => [{ name: ORIGIN + '/_next/static/chunks/link.js' }] },
+    document: { readyState: 'complete' }, window: { addEventListener: () => {} },
+    // (At once, registering 4 s after load included, but not the warm-up's 6 s and 20 s fallbacks: idle periods drive it here.)
+    setTimeout: (f: () => void, ms = 0) => void (ms < 6000 && f()),
+    performance: { now: () => performance.now(), mark() {}, getEntriesByType: () => [{ name: ORIGIN + '/_next/static/chunks/link.js' }] },
     idle: (f: () => void) => void idles.push(f),
   } });
   s.engine.registerSW();

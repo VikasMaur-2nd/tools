@@ -22,6 +22,8 @@ export function test(name, opts, fn) {
   if (typeof opts === 'function') [fn, opts] = [opts, {}];
   registerTest(name, opts, async (t) => {
     t.platformConsoleErrors = [];
+    /** Requests a page cancelled itself (it navigated away while they loaded): see checkErrors in offline.mjs. */
+    t.platformAborted = new Set();
     const prepared = new WeakSet();
     const prepare = (page) => {
       // (Watched once, however it was announced.)
@@ -39,7 +41,11 @@ export function test(name, opts, fn) {
       page.on('response', (r) => {
         if (r.status() >= 400) t.log(`HTTP ${r.status()} ${r.request().method()} ${r.url()}`);
       });
-      page.on('requestfailed', (r) => t.log(`request failed ${r.url()}: ${r.failure()?.errorText}`));
+      page.on('requestfailed', (r) => {
+        const error = r.failure()?.errorText;
+        if (/NS_BINDING_ABORTED|net::ERR_ABORTED|cancelled/i.test(error || '')) t.platformAborted.add(r.url());
+        t.log(`request failed ${r.url()}: ${error}`);
+      });
       // Firefox's console text can be only "Error" for a rejected chunk import.
       // Read its actual Error argument so it can be classified without ignoring
       // unrelated errors that happen to have the same console label.
@@ -488,7 +494,8 @@ async function swState(page) {
       sw.postMessage({ type }, [ch.port2]);
     });
     return {
-      page: { url: location.pathname, readyState: document.readyState, ...window.__swSteps },
+      // (warm: the warm-up's steps so far, 'tk:sw-warm' in registerSW; hidden or unfocused pages may get no idle time.)
+      page: { url: location.pathname, readyState: document.readyState, ...window.__swSteps, warm: performance.getEntriesByName('tk:sw-warm').length, visibility: document.visibilityState, focused: document.hasFocus() },
       controller: sw?.state ?? null,
       version: await ask('harness-version'),
       registration: reg ? { active: reg.active?.state, waiting: reg.waiting?.state, installing: reg.installing?.state } : null,

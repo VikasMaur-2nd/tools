@@ -27,14 +27,19 @@ without assertions. The canary logged 23 action steps and a final leak verdict.
 | `rv/c/sw-offline.mjs`, default scenarios | 40 per engine | 44 per engine | 3 |
 | Same script, optional `swupdate` | 3 per engine | 3 per engine | 1 |
 | Same script, optional `upgrade` | 8 per engine | 8 per engine | 1 |
+| None: deploy clean-up (`toolpage`, `rollback`, `homeretry`) | — | 33 per engine | 3 |
 
-The offline total is 51 old checks and 55 new checks per engine. The four added
+The offline total is 51 old checks and 88 new checks per engine. Four added
 checks establish that the two builds differ and that visited pages reached the
-cache before the proxy cuts their connections. WebMCP adds checks for the contents
-of the conditional scripts and reading the last record of a large document.
+cache before the proxy cuts their connections. The two clean-up scenarios check
+that a deploy first seen on a tool page brings the shell along and deletes the
+old build once its tab closes, and that a rollback keeps both builds' tabs whole
+and deletes each build's leftovers when its own tabs close; a third, that a shell
+which failed to follow a tool page to a new build follows on the next visit. WebMCP adds checks for
+the contents of the conditional scripts and reading the last record of a large document.
 
 Supplemental regressions add six mock transport checks and four editor-helper
-checks per engine. The full matrix has 33 tests, 45 jobs and 337 checks per run.
+checks per engine. The full matrix has 36 tests, 54 jobs and 436 checks per run.
 
 The query-string canary remains a query-string privacy check. Document imports
 use `#a=`, so a separate case verifies a real remote-document import and its
