@@ -290,7 +290,7 @@ async function commit(cache, key, page, res, html, partial, base, rev, deps) {
 /**
  * Tabs being opened: every navigation (it may run a cached page's build, or the network's, which may share
  * files with an old one), until its tab shows among the clients a moment after its page is served, or
- * OPENING_MS. `id`: resultingClientId, '' in browsers without one.
+ * OPENING_MS after that (noted again then). `id`: resultingClientId, '' in browsers without one.
  */
 let opening = [];
 function noteOpening(id) {
@@ -566,14 +566,15 @@ self.addEventListener('fetch', (event) => {
   if (url.origin !== ORIGIN || bypass(url, req.headers)) return;
 
   if (req.mode === 'navigate') {
-    noteOpening(event.resultingClientId); // (see opening)
+    const note = (res) => (noteOpening(event.resultingClientId), res); // (see opening)
+    note();
     if (url.pathname === '/') {
       // Stale-while-revalidate the shell; query strings (utm_*, etc.) are ignored.
       const hit = cachedCopy('/');
-      event.respondWith(hit.then((res) => res || fetch(req)));
+      event.respondWith(hit.then((res) => res || fetch(req)).then(note));
       event.waitUntil(hit.then(() => refreshShell()).catch(() => {}));
     } else {
-      event.respondWith(networkFirst(event, req));
+      event.respondWith(networkFirst(event, req).then(note));
     }
   } else if (isHashed(url.pathname)) {
     event.respondWith(cacheFirst(event, req));

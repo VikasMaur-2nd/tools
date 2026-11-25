@@ -2177,3 +2177,33 @@ test("service worker: a slow renewal never puts its copy over one a visit stored
   await report;
   assert.match(sw.cached('/tools/json-graph')!, /Graph c, newer/);
 });
+
+test('service worker: a tab served the cached page after a slow network failure is guarded from then, not from its start (PR #41 review 2, finding 4)', async () => {
+  const sw = worker();
+  sw.serve(site('a'));
+  await sw.install();
+  sw.tabs(['t1']);
+  await sw.visit('/tools/json-graph', 't1');
+  await sw.post(['/', '/tools/json-graph'], 't1');
+  // Build b. A tab opens the tool page: the network takes over a minute, then fails; it gets build a's copy.
+  sw.serve(site('b'));
+  const release = sw.hold('/tools/json-graph');
+  const nav = sw.open('/tools/json-graph', 'o');
+  await settle();
+  sw.advance(61_000);
+  sw.offline();
+  release();
+  assert.match((await nav.text)!, /Graph a/);
+  await nav.done;
+  sw.offline(false);
+  // Before it shows among the tabs: visits bring build b in (build a's files retired), and their tabs close.
+  sw.tabs(['t1', 'v']);
+  await sw.visit('/', 'v');
+  await sw.visit('/tools/json-graph', 'v');
+  sw.tabs(['n']);
+  await sw.post(['/'], 'n');
+  // It shows: build a's files are there for it, offline too.
+  sw.tabs(['n', 'o']);
+  sw.offline();
+  assert.deepEqual(await loadsAll(sw, 'o', ['app.css', 'main.js', 'page.js', 'tool.js'].map((f) => `/_next/static/chunks/a-${f}`)), []);
+});
