@@ -1994,7 +1994,7 @@ async function stranded(sw: ReturnType<typeof worker>, { a = tooled('a'), b = to
   }
   sw.advance(61_000);
   assert.match(sw.cached('/tools/json-graph')!, /Graph a/);
-  assert.ok(sw.has('/_next/static/chunks/b-graph.js'));
+  assert.ok(sw.statics().some((p) => p.endsWith('/b-graph.js')));
 }
 
 const fetchesOf = (sw: ReturnType<typeof worker>, path: string) => sw.fetched.filter((p) => p === path).length;
@@ -2323,4 +2323,20 @@ test("service worker: an unrelated page whose re-follow stalls doesn't hold back
   release();
   await report;
   assert.match(sw.cached('/tools/json-graph')!, /Graph c/);
+});
+
+test("service worker (production's layout): renewal follows the copy's lazy chunks, and keeps the old copy while one doesn't come", async () => {
+  // Build c's tool chunk loads huge mode's wasm, all of it under /_next/static/immutable/; the wasm answers 503.
+  const W = '/_next/static/immutable/media/c-h.wasm';
+  const c = immutable({ ...tooled('c', ';w("static/media/c-h.wasm")'), '/_next/static/media/c-h.wasm': 'wasm' });
+  const sw = worker();
+  await stranded(sw, { a: immutable(tooled('a')), b: immutable(tooled('b')), c: { ...c, [W]: 503 } });
+  sw.tabs(['n']);
+  await sw.post(['/'], 'n');
+  assert.match(sw.cached('/tools/json-graph')!, /Graph a/);
+  // It answers: the next report renews the page, its lazy chunks and the wasm with it.
+  sw.serve(c);
+  await sw.post(['/'], 'n');
+  assert.match(sw.cached('/tools/json-graph')!, /Graph c/);
+  for (const f of ['chunks/c-tl.js', 'media/c-h.wasm', 'chunks/c-graph.js']) assert.ok(sw.has('/_next/static/immutable/' + f), f);
 });
