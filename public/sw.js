@@ -512,8 +512,11 @@ self.addEventListener('message', (event) => {
         .then(async (waited) => {
           if (!waited || !report) return;
           // Deleting waited for pages whose files aren't all known: they are followed again (see renew), then it reruns.
+          // One still not complete (not a home, not asked for yet) is renewed per report, for FETCH_MS at most.
           const { open } = await needed(cache, await cache.keys());
-          await Promise.all(open.map(async (u) => ((await followPage(cache, u)) || {}).open && renew(cache, u)));
+          const found = await Promise.all(open.map((u) => followPage(cache, u)));
+          const stuck = open.find((u, i) => found[i] && found[i].open && !HOME_RE.test(new URL(u).pathname) && !renewals.has(u));
+          if (stuck) await within(renew(cache, stuck), FETCH_MS);
           await serially(() => tidy(cache));
         })
         .catch(() => {});
@@ -538,20 +541,19 @@ async function followPage(cache, url) {
   return found;
 }
 
-/** Pages renew fetched while this worker runs. */
-const renewed = new Set();
+/** Pages asked for by renew while this worker runs (from the start: a report meanwhile picks another). */
+const renewals = new Set();
 
 /**
  * A cached page a follow can't complete (the server lacks a chunk) holds every deletion: the network's copy takes its
  * place if whole, as on a visit (publish), once per page while the worker runs. Not a home (see refreshHomes).
  */
 async function renew(cache, url) {
-  if (renewed.has(url) || HOME_RE.test(new URL(url).pathname)) return;
+  renewals.add(url);
   const rev = revs.get(url) || 0; // (the copy there before the fetch: see commit)
   const base = await htmlOf(url);
   const res = base && (await download(url, { cache: 'no-cache', credentials: 'same-origin' }).catch(() => null));
-  if (!res) return;
-  renewed.add(url);
+  if (!res) return renewals.delete(url); // (no answer: asked for again on a later report)
   const html = cacheable(res) && isHTML(res) && (await res.clone().text().catch(() => null));
   const found = html && (await pageFiles(cache, extractAssets(html), true, true, url, null, true)); // (every hashed file)
   if (found && found.ok && !found.open) await publish(cache, url, url, res, html, false, base, rev, Array.from(found.files));

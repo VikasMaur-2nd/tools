@@ -2207,3 +2207,45 @@ test('service worker: a tab served the cached page after a slow network failure 
   sw.offline();
   assert.deepEqual(await loadsAll(sw, 'o', ['app.css', 'main.js', 'page.js', 'tool.js'].map((f) => `/_next/static/chunks/a-${f}`)), []);
 });
+
+test("service worker: a report renews one page, and reports that overlap never ask for the same page twice (PR #41 review 2, finding 6)", async () => {
+  // Build a's diff page is stuck too (its own chunk loads one more, gone with build a).
+  const a = { ...tooled('a'), '/_next/static/chunks/a-diff.js': 'x.l("static/chunks/a-dl.js")', '/_next/static/chunks/a-dl.js': 'dl()' };
+  const sw = worker();
+  await stranded(sw, { a, pages: ['/tools/json-diff'] });
+  const graph = fetchesOf(sw, '/tools/json-graph');
+  const diff = fetchesOf(sw, '/tools/json-diff');
+  // A report asks for one page (the network's copy slow).
+  sw.tabs(['n', 'n2']);
+  const release = sw.hold('/tools/json-graph');
+  const r1 = sw.postSoon(['/'], 'n');
+  await settle();
+  assert.equal(sw.env.holds.get('/tools/json-graph')!.length, 0, 'the tool page is asked for (its answer held)');
+  assert.equal(fetchesOf(sw, '/tools/json-diff') - diff, 0, 'not the diff page');
+  // A report meanwhile doesn't ask for it again (a second request wouldn't be held): it takes the other.
+  const r2 = sw.postSoon(['/'], 'n2');
+  await settle();
+  assert.deepEqual([fetchesOf(sw, '/tools/json-graph') - graph, fetchesOf(sw, '/tools/json-diff') - diff], [0, 1]);
+  release();
+  await Promise.all([r1, r2]);
+  assert.equal(fetchesOf(sw, '/tools/json-graph') - graph, 1);
+  assert.match(sw.cached('/tools/json-graph')!, /Graph c/);
+  assert.match(sw.cached('/tools/json-diff')!, /Diff c/);
+});
+
+test('service worker: a renewal whose downloads drag on keeps its report FETCH_MS at most (PR #41 review 2, finding 6)', async () => {
+  const sw = worker();
+  await stranded(sw);
+  sw.tabs(['n']);
+  // The network's copy takes 20 s, then its tool chunk hangs (each download is given up 30 s after it starts).
+  const page = sw.hold('/tools/json-graph');
+  sw.hold('/_next/static/chunks/c-tool.js');
+  const report = sw.postSoon(['/'], 'n');
+  await settle();
+  sw.advance(20_000);
+  page();
+  await settle();
+  sw.advance(10_000);
+  await settle();
+  assert.ok(await settled(report), 'done 30 s after the renewal began');
+});
