@@ -516,11 +516,12 @@ self.addEventListener('message', (event) => {
         .then(async (waited) => {
           if (!waited || !report) return;
           // Deleting waited for pages whose files aren't all known: they are followed again (see renew), then it reruns.
-          // One still incomplete (not a home, not asked for yet) is renewed per report, FETCH_MS at most.
+          // The first still incomplete as its follow ends (not a home, see renewable) is renewed, FETCH_MS at most.
           const { open } = await needed(cache, await cache.keys());
-          const found = await Promise.all(open.map((u) => followPage(cache, u)));
-          const stuck = open.find((u, i) => found[i] && found[i].open && !HOME_RE.test(new URL(u).pathname) && renewable(u));
-          if (stuck) await renew(cache, stuck);
+          let fix = null;
+          const pick = (u) => (f) => !fix && f && f.open && !HOME_RE.test(new URL(u).pathname) && renewable(u) && (fix = renew(cache, u));
+          await Promise.all(open.map((u) => followPage(cache, u).then(pick(u))));
+          await fix;
           await serially(() => tidy(cache));
         })
         .catch(() => {});

@@ -2297,3 +2297,20 @@ test('service worker: a renewal that keeps failing for a moment is tried three t
   assert.equal(fetchesOf(sw, '/tools/json-graph') - before, 3);
   assert.match(sw.cached('/tools/json-graph')!, /Graph a/);
 });
+
+test("service worker: an unrelated page whose re-follow stalls doesn't hold back a renewal (PR #41 review 3, finding 3)", async () => {
+  // Build a's diff page is incomplete too, its own chunk loading one more, which hangs on the network.
+  const a = { ...tooled('a'), '/_next/static/chunks/a-diff.js': 'x.l("static/chunks/a-dl.js")', '/_next/static/chunks/a-dl.js': 'dl()' };
+  const sw = worker();
+  await stranded(sw, { a, pages: ['/tools/json-diff'] });
+  sw.serve({ ...tooled('c'), '/_next/static/chunks/a-dl.js': 404 });
+  sw.tabs(['n']);
+  const release = sw.hold('/_next/static/chunks/a-dl.js');
+  const before = fetchesOf(sw, '/tools/json-graph');
+  const report = sw.postSoon(['/'], 'n');
+  await settle();
+  assert.equal(fetchesOf(sw, '/tools/json-graph') - before, 1, 'the tool page is asked for while the diff page is still followed');
+  release();
+  await report;
+  assert.match(sw.cached('/tools/json-graph')!, /Graph c/);
+});
