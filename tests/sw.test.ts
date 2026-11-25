@@ -2129,3 +2129,33 @@ test("service worker: renewal requires every file the network's copy can load, a
   assert.match(again.cached('/tools/json-graph')!, /Graph c/);
   assert.ok(again.has(W));
 });
+
+test("service worker: renewal's commit re-checks every file of the copy, so a clean-up meanwhile can't leave it short (PR #41 review 2, finding 2)", async () => {
+  // s.js (a module unchanged): named by build b's main chunk and by build c's tool chunk, by nothing of build a.
+  const S = '/_next/static/chunks/s.js';
+  const b = { ...tooled('b'), '/_next/static/chunks/b-main.js': 'x.l("static/chunks/b-graph.js");x.l("static/chunks/s.js")', [S]: 's()' };
+  const c = { ...tooled('c', ';x.l("static/chunks/s.js")'), [S]: 's()' };
+  const sw = worker();
+  await stranded(sw, { b, c });
+  assert.ok(sw.has(S), "retired with build b's generation");
+  // A report renews the tool page: s.js is in the cache, build c's tl.js is slow.
+  sw.tabs(['n']);
+  const release = sw.hold('/_next/static/chunks/c-tl.js');
+  const first = sw.postSoon(['/'], 'n');
+  await settle();
+  // Meanwhile the old page's missing chunk is back: another report completes it, and build b's generation goes, s.js too.
+  sw.serve({ ...c, '/_next/static/chunks/a-tl.js': 'tl()' });
+  await sw.post(['/'], 'n');
+  assert.ok(!sw.has(S));
+  release();
+  await first;
+  // The tool page in the cache is whole.
+  const page = sw.cached('/tools/json-graph')!;
+  if (/Graph c/.test(page)) assert.ok(sw.has(S), 'build c\'s copy with s.js');
+  else assert.match(page, /Graph a/);
+  sw.offline();
+  assert.ok((await sw.visit('/tools/json-graph', 'off')) !== null);
+  const tag = /Graph c/.test(page) ? 'c' : 'a';
+  const files = tag === 'c' ? [S, '/_next/static/chunks/c-tl.js'] : ['/_next/static/chunks/a-tl.js'];
+  assert.deepEqual(await loadsAll(sw, 'off', files), []);
+});

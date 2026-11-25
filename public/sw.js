@@ -235,8 +235,8 @@ const revs = new Map();
 const htmlOf = (key) => cachedCopy(key).then((r) => (r && isHTML(r) ? r.text() : null));
 
 /** commit() in its turn; a new '/' committed tells every tab a new version is ready. */
-async function publish(cache, key, page, res, html, partial, base, rev) {
-  const done = await serially(() => commit(cache, key, page, res, html, partial, base, rev));
+async function publish(cache, key, page, res, html, partial, base, rev, deps) {
+  const done = await serially(() => commit(cache, key, page, res, html, partial, base, rev, deps));
   if (done && done.replaced && page === ORIGIN + '/') {
     const tabs = await windowTabs(true); // (another worker's too: tabs it still controls while this one installs)
     if (tabs) tabs.forEach((c) => c.postMessage({ type: 'updated' }));
@@ -266,15 +266,16 @@ const serially = (fn) => (tidying = tidying.then(fn, fn));
  * `partial` there is none), if a hashed file the HTML names is gone. Then an old copy of another build
  * retires its files (tidy). Resolves { replaced, html }.
  */
-async function commit(cache, key, page, res, html, partial, base, rev) {
+async function commit(cache, key, page, res, html, partial, base, rev, deps) {
   const prev = await cache.match(key, MATCH);
   const old = prev && isHTML(prev) ? await prev.text() : null;
   const files = extractAssets(html);
   const same = old !== null && sameFiles(extractAssets(old), files);
   if (!same && (old === null ? base !== null : base === null || !sameFiles(extractAssets(old), extractAssets(base)))) return false;
   if (!same && rev !== undefined && rev !== (revs.get(page) || 0)) return false;
-  if (!same && !(partial && !prev)) {
-    const must = files.filter((u) => isHashed(new URL(u).pathname) && !otherStrings(u, page));
+  // (`deps`: every file a renewal found its copy to need, not only what the HTML names: see renew.)
+  if (deps || (!same && !(partial && !prev))) {
+    const must = (deps || files).filter((u) => isHashed(new URL(u).pathname) && !otherStrings(u, page));
     const held = await Promise.all(must.map((u) => cache.match(u, MATCH)));
     if (held.indexOf(undefined) !== -1) return false;
   }
@@ -553,7 +554,7 @@ async function renew(cache, url) {
   renewed.add(url);
   const html = cacheable(res) && isHTML(res) && (await res.clone().text().catch(() => null));
   const found = html && (await pageFiles(cache, extractAssets(html), true, true, url, null, true)); // (every hashed file)
-  if (found && found.ok && !found.open) await publish(cache, url, url, res, html, false, base, rev);
+  if (found && found.ok && !found.open) await publish(cache, url, url, res, html, false, base, rev, Array.from(found.files));
 }
 
 self.addEventListener('fetch', (event) => {
