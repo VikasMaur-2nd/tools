@@ -117,6 +117,8 @@ function bypass(url, headers) {
 
 /** Only full, same-origin, non-redirected 200s are worth keeping. */
 const cacheable = (res) => res && res.status === 200 && res.type === 'basic' && !res.redirected;
+/** A status that may pass (5xx, 408, 429). */
+const later = (status) => status >= 500 || status === 408 || status === 429;
 
 /** Same-origin asset URLs referenced by an HTML document. */
 function extractAssets(html) {
@@ -181,7 +183,7 @@ async function pageFiles(cache, roots, fetchMissing, deep = true, page = ORIGIN 
         res = await download(url, { credentials: 'same-origin', signal });
         if (!cacheable(res)) {
           open = open || names;
-          if (res.status >= 500 || res.status === 408 || res.status === 429) retry = true;
+          if (later(res.status)) retry = true;
           return !required; // (a name in a script that is no file holds no page back)
         }
         await cache.put(url, res.clone());
@@ -517,7 +519,7 @@ self.addEventListener('message', (event) => {
           // One still incomplete (not a home, not asked for yet) is renewed per report, FETCH_MS at most.
           const { open } = await needed(cache, await cache.keys());
           const found = await Promise.all(open.map((u) => followPage(cache, u)));
-          const stuck = open.find((u, i) => found[i] && found[i].open && !HOME_RE.test(new URL(u).pathname) && !renewals.has(u));
+          const stuck = open.find((u, i) => found[i] && found[i].open && !HOME_RE.test(new URL(u).pathname) && renewable(u));
           if (stuck) await renew(cache, stuck);
           await serially(() => tidy(cache));
         })
@@ -543,30 +545,46 @@ async function followPage(cache, url) {
   return found;
 }
 
-/** Pages renew asked for while this worker runs. */
-const renewals = new Set();
+/** Renewals while this worker runs, by page: { busy, tries } (tries: failures that may pass; three at most). */
+const renewals = new Map();
+const renewable = (url) => {
+  const r = renewals.get(url);
+  return !r || (!r.busy && r.tries < 3);
+};
 
 /**
  * A cached page a follow can't complete (the server lacks a chunk) holds every deletion: the network's copy takes its
- * place if every hashed file it can load is there (commit checks them all), as on a visit (publish).
+ * place if every hashed file it can load is there (commit checks them all), as on a visit (publish). One that may
+ * work later (no answer, a 5xx, a commit refused) is tried again on a later report.
  */
 async function renew(cache, url) {
-  renewals.add(url);
+  const r = renewals.get(url) || { tries: 0 };
+  renewals.set(url, Object.assign(r, { busy: true }));
+  const done = await renewOnce(cache, url).catch(() => false); // (true: in; null: for good; false: may work later)
+  r.busy = false;
+  if (done) renewals.delete(url);
+  else r.tries = done === null ? 3 : r.tries + 1;
+}
+
+async function renewOnce(cache, url) {
   const rev = revs.get(url) || 0; // (the copy there before the fetch: see commit)
   // Every download of it stops at its deadline, FETCH_MS on, and nothing is published past it (see commit).
   const end = Date.now() + FETCH_MS;
   const ctl = new AbortController();
   const timer = setTimeout(() => ctl.abort(), FETCH_MS);
-  const base = await htmlOf(url);
-  const res = base && (await download(url, { cache: 'no-cache', credentials: 'same-origin', signal: ctl.signal }).catch(() => null));
-  if (!res) {
+  try {
+    const base = await htmlOf(url);
+    const res = base && (await download(url, { cache: 'no-cache', credentials: 'same-origin', signal: ctl.signal }).catch(() => null));
+    if (!res || later(res.status)) return false;
+    const html = cacheable(res) && isHTML(res) && (await res.clone().text().catch(() => null));
+    const found = html && (await pageFiles(cache, extractAssets(html), true, true, url, null, ctl.signal));
+    if (!found) return null;
+    if (!found.ok || found.retry) return false;
+    if (found.open) return null;
+    return !!(await publish(cache, url, url, res, html, false, base, rev, { files: Array.from(found.files), end }));
+  } finally {
     clearTimeout(timer);
-    return renewals.delete(url); // (no answer: asked again later)
   }
-  const html = cacheable(res) && isHTML(res) && (await res.clone().text().catch(() => null));
-  const found = html && (await pageFiles(cache, extractAssets(html), true, true, url, null, ctl.signal));
-  clearTimeout(timer);
-  if (found && found.ok && !found.open) await publish(cache, url, url, res, html, false, base, rev, { files: Array.from(found.files), end });
 }
 
 self.addEventListener('fetch', (event) => {

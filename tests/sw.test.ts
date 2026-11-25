@@ -2270,3 +2270,30 @@ test("service worker: past its 30 s a renewal's downloads stop and it never publ
   await report;
   assert.match(sw.cached('/tools/json-graph')!, /Graph a/);
 });
+
+test("service worker: after a transient failure a later report renews the page again, three tries at most while the worker runs (PR #41 review 3, finding 2)", async () => {
+  const W = '/_next/static/media/c-h.wasm';
+  const c = { ...tooled('c', ';w("static/media/c-h.wasm")'), [W]: 503 };
+  const sw = worker();
+  await stranded(sw, { c });
+  sw.tabs(['n']);
+  const asked = () => fetchesOf(sw, '/tools/json-graph');
+  const before = asked();
+  await sw.post(['/'], 'n');
+  assert.equal(asked() - before, 1);
+  assert.match(sw.cached('/tools/json-graph')!, /Graph a/);
+  // The wasm answers: the next report, in the same worker, renews it.
+  sw.serve({ ...c, [W]: 'wasm' });
+  await sw.post(['/'], 'n');
+  assert.match(sw.cached('/tools/json-graph')!, /Graph c/);
+});
+
+test('service worker: a renewal that keeps failing for a moment is tried three times while the worker runs (PR #41 review 3, finding 2)', async () => {
+  const sw = worker();
+  await stranded(sw, { c: { ...tooled('c'), '/_next/static/chunks/c-tl.js': 503 } });
+  sw.tabs(['n']);
+  const before = fetchesOf(sw, '/tools/json-graph');
+  for (let i = 0; i < 5; i++) await sw.post(['/'], 'n');
+  assert.equal(fetchesOf(sw, '/tools/json-graph') - before, 3);
+  assert.match(sw.cached('/tools/json-graph')!, /Graph a/);
+});
