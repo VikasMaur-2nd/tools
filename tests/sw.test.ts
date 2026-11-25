@@ -411,12 +411,14 @@ test('service worker: files posted by a page are cached only when really there',
   assert.ok(!sw.has('/manifest.webmanifest'));
 });
 
-test("service worker: a page caches huge mode's dictionary of its own language only", async () => {
+// (In both layouts: production's names the dictionaries under static/immutable/media/.)
+for (const prod of [false, true]) test(`service worker${prod ? " (production's layout)" : ''}: a page caches huge mode's dictionary of its own language only`, async () => {
+  const L = (path: string) => (prod ? path.replace(/static\/(chunks|media)\//g, 'static/immutable/$1/') : path);
   // Every page loads a chunk that names the dictionaries of all languages (they load when a huge file opens).
-  const html = (title: string) => `<!doctype html><title>${title}</title><script src="/_next/static/chunks/h-main.js"></script>`;
-  const dict = (l: string) => `/_next/static/media/huge-strings.${l}.0a1b2c.json`;
+  const html = (title: string) => `<!doctype html><title>${title}</title><script src="${L('/_next/static/chunks/h-main.js')}"></script>`;
+  const dict = (l: string) => L(`/_next/static/media/huge-strings.${l}.0a1b2c.json`);
   const sw = worker();
-  sw.serve({
+  const files: Files = {
     '/': html('Home'),
     '/de': html('Start'),
     '/de/tools/json-graph': html('Graph'),
@@ -426,12 +428,13 @@ test("service worker: a page caches huge mode's dictionary of its own language o
     [dict('de')]: '{"Large file":"Große Datei"}',
     [dict('ja')]: '{"Large file":"大容量ファイル"}',
     [dict('es')]: '{"Large file":"Archivo grande"}',
-  });
+  };
+  sw.serve(prod ? immutable(files) : files);
   const dicts = () => sw.statics().filter((p) => p.includes('huge-strings'));
   await sw.install();
   await sw.post(['/']);
   // English: none, while the page's other chunks are followed.
-  assert.ok(sw.has('/_next/static/chunks/h-lazy.js'));
+  assert.ok(sw.has(L('/_next/static/chunks/h-lazy.js')));
   assert.deepEqual(dicts(), []);
   await sw.visit('/de/tools/json-graph');
   await sw.post(['/de/tools/json-graph']);
