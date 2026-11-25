@@ -77,11 +77,14 @@ function within(promise, ms, fallback) {
   return Promise.race([promise, late]).finally(() => clearTimeout(timer));
 }
 
-/** fetch() for the worker's own downloads, never a page's request: given up (aborted) after FETCH_MS, body included. */
+/** fetch() for the worker's own downloads, never a page's request: given up (aborted) after FETCH_MS, body included, or with `init.signal`. */
 function download(url, init) {
   if (typeof AbortController !== 'function') return fetch(url, init);
   const ctl = new AbortController();
   setTimeout(() => ctl.abort(), FETCH_MS);
+  const outer = init && init.signal;
+  if (outer && outer.aborted) ctl.abort();
+  else if (outer) outer.addEventListener('abort', () => ctl.abort());
   return fetch(url, Object.assign({}, init, { signal: ctl.signal }));
 }
 
@@ -158,7 +161,7 @@ function filesIn(url, text) {
  * what the cache holds, `have` its keys); `deep` false: the roots only. `ok`: every required file is cached;
  * `files`: those found; `open`: a script or stylesheet among them isn't cached (what it names is unknown).
  */
-async function pageFiles(cache, roots, fetchMissing, deep = true, page = ORIGIN + '/', have = null) {
+async function pageFiles(cache, roots, fetchMissing, deep = true, page = ORIGIN + '/', have = null, signal) {
   const files = new Set();
   let open = false;
   let retry = false; // a download that may work later (5xx, 408, 429, the network) failed
@@ -175,7 +178,7 @@ async function pageFiles(cache, roots, fetchMissing, deep = true, page = ORIGIN 
     let res = have && !have.has(bare(url)) ? null : have && (!names || named.has(url)) ? true : await cache.match(url, MATCH);
     if (!res && fetchMissing) {
       try {
-        res = await download(url, { credentials: 'same-origin' });
+        res = await download(url, { credentials: 'same-origin', signal });
         if (!cacheable(res)) {
           open = open || names;
           if (res.status >= 500 || res.status === 408 || res.status === 429) retry = true;
@@ -234,8 +237,8 @@ const revs = new Map();
 const htmlOf = (key) => cachedCopy(key).then((r) => (r && isHTML(r) ? r.text() : null));
 
 /** commit() in its turn; a new '/' committed tells every tab a new version is ready. */
-async function publish(cache, key, page, res, html, partial, base, rev, deps) {
-  const done = await serially(() => commit(cache, key, page, res, html, partial, base, rev, deps));
+async function publish(cache, key, page, res, html, partial, base, rev, renewal) {
+  const done = await serially(() => commit(cache, key, page, res, html, partial, base, rev, renewal));
   if (done && done.replaced && page === ORIGIN + '/') {
     const tabs = await windowTabs(true); // (another worker's too: tabs it still controls while this one installs)
     if (tabs) tabs.forEach((c) => c.postMessage({ type: 'updated' }));
@@ -265,16 +268,17 @@ const serially = (fn) => (tidying = tidying.then(fn, fn));
  * `partial` there is none), if a hashed file the HTML names is gone. Then an old copy of another build
  * retires its files (tidy). Resolves { replaced, html }.
  */
-async function commit(cache, key, page, res, html, partial, base, rev, deps) {
+async function commit(cache, key, page, res, html, partial, base, rev, renewal) {
   const prev = await cache.match(key, MATCH);
   const old = prev && isHTML(prev) ? await prev.text() : null;
   const files = extractAssets(html);
   const same = old !== null && sameFiles(extractAssets(old), files);
   if (!same && (old === null ? base !== null : base === null || !sameFiles(extractAssets(old), extractAssets(base)))) return false;
-  if ((!same || deps) && rev !== undefined && rev !== (revs.get(page) || 0)) return false;
-  // (`deps`: a renewal's whole graph: see renew.)
-  if (deps || (!same && !(partial && !prev))) {
-    const must = (deps || files).filter((u) => isHashed(new URL(u).pathname) && !otherStrings(u, page));
+  // (`renewal`: { files, its whole graph, end, its deadline }: see renew.)
+  if (renewal && Date.now() > renewal.end) return false;
+  if ((!same || renewal) && rev !== undefined && rev !== (revs.get(page) || 0)) return false;
+  if (renewal || (!same && !(partial && !prev))) {
+    const must = (renewal ? renewal.files : files).filter((u) => isHashed(new URL(u).pathname) && !otherStrings(u, page));
     const held = await Promise.all(must.map((u) => cache.match(u, MATCH)));
     if (held.indexOf(undefined) !== -1) return false;
   }
@@ -514,7 +518,7 @@ self.addEventListener('message', (event) => {
           const { open } = await needed(cache, await cache.keys());
           const found = await Promise.all(open.map((u) => followPage(cache, u)));
           const stuck = open.find((u, i) => found[i] && found[i].open && !HOME_RE.test(new URL(u).pathname) && !renewals.has(u));
-          if (stuck) await within(renew(cache, stuck), FETCH_MS);
+          if (stuck) await renew(cache, stuck);
           await serially(() => tidy(cache));
         })
         .catch(() => {});
@@ -549,12 +553,20 @@ const renewals = new Set();
 async function renew(cache, url) {
   renewals.add(url);
   const rev = revs.get(url) || 0; // (the copy there before the fetch: see commit)
+  // Every download of it stops at its deadline, FETCH_MS on, and nothing is published past it (see commit).
+  const end = Date.now() + FETCH_MS;
+  const ctl = new AbortController();
+  const timer = setTimeout(() => ctl.abort(), FETCH_MS);
   const base = await htmlOf(url);
-  const res = base && (await download(url, { cache: 'no-cache', credentials: 'same-origin' }).catch(() => null));
-  if (!res) return renewals.delete(url); // (no answer: asked again later)
+  const res = base && (await download(url, { cache: 'no-cache', credentials: 'same-origin', signal: ctl.signal }).catch(() => null));
+  if (!res) {
+    clearTimeout(timer);
+    return renewals.delete(url); // (no answer: asked again later)
+  }
   const html = cacheable(res) && isHTML(res) && (await res.clone().text().catch(() => null));
-  const found = html && (await pageFiles(cache, extractAssets(html), true, true, url));
-  if (found && found.ok && !found.open) await publish(cache, url, url, res, html, false, base, rev, Array.from(found.files));
+  const found = html && (await pageFiles(cache, extractAssets(html), true, true, url, null, ctl.signal));
+  clearTimeout(timer);
+  if (found && found.ok && !found.open) await publish(cache, url, url, res, html, false, base, rev, { files: Array.from(found.files), end });
 }
 
 self.addEventListener('fetch', (event) => {

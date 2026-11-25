@@ -2249,3 +2249,24 @@ test('service worker: a renewal whose downloads drag on keeps its report FETCH_M
   await settle();
   assert.ok(await settled(report), 'done 30 s after the renewal began');
 });
+
+test("service worker: past its 30 s a renewal's downloads stop and it never publishes (PR #41 review 3, finding 1)", async () => {
+  const sw = worker();
+  await stranded(sw);
+  sw.tabs(['n']);
+  // The network's copy takes 20 s; its tool chunk then takes longer than the renewal has left.
+  const page = sw.hold('/tools/json-graph');
+  const tool = sw.hold('/_next/static/chunks/c-tool.js');
+  const report = sw.postSoon(['/'], 'n');
+  await settle();
+  sw.advance(20_000);
+  page();
+  await settle();
+  sw.advance(15_000);
+  await settle();
+  // The tool chunk arrives after the deadline: nothing is published.
+  tool();
+  await settle();
+  await report;
+  assert.match(sw.cached('/tools/json-graph')!, /Graph a/);
+});
