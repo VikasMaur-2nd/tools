@@ -159,12 +159,12 @@ function filesIn(url, text) {
  * what the cache holds, `have` its keys); `deep` false: the roots only. `ok`: every required file is cached;
  * `files`: those found; `open`: a script or stylesheet among them isn't cached (what it names is unknown).
  */
-async function pageFiles(cache, roots, fetchMissing, deep = true, page = ORIGIN + '/', have = null) {
+async function pageFiles(cache, roots, fetchMissing, deep = true, page = ORIGIN + '/', have = null, strict = false) {
   const files = new Set();
   let open = false;
   let retry = false; // a download that may work later (5xx, 408, 429, the network) failed
   const visit = async (url, required) => {
-    if (files.has(url) || otherStrings(url, page)) return true;
+    if (files.has(url) || otherStrings(url, page) || url.endsWith('/')) return true; // (a directory is no file)
     if (files.size >= MAX_FILES) {
       open = true; // (past the cap the rest is unknown)
       return true;
@@ -180,7 +180,7 @@ async function pageFiles(cache, roots, fetchMissing, deep = true, page = ORIGIN 
         if (!cacheable(res)) {
           open = open || names;
           if (res.status >= 500 || res.status === 408 || res.status === 429) retry = true;
-          return !required; // (a name in a script that is no file holds no page back)
+          return !required && !(strict && isHashed(path)); // (a name in a script that is no file holds no page back, but with `strict`)
         }
         await cache.put(url, res.clone());
       } catch {
@@ -552,7 +552,7 @@ async function renew(cache, url) {
   if (!res) return;
   renewed.add(url);
   const html = cacheable(res) && isHTML(res) && (await res.clone().text().catch(() => null));
-  const found = html && (await pageFiles(cache, extractAssets(html), true, true, url));
+  const found = html && (await pageFiles(cache, extractAssets(html), true, true, url, null, true)); // (every hashed file)
   if (found && found.ok && !found.open) await publish(cache, url, url, res, html, false, base, rev);
 }
 

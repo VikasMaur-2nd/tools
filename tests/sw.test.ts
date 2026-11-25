@@ -2112,3 +2112,20 @@ test("service worker: a stuck page whose network copy isn't whole either is kept
   await again.post(['/'], 'n');
   assert.match(again.cached('/tools/json-graph')!, /Graph c/);
 });
+
+test("service worker: renewal requires every file the network's copy can load, a lazy wasm too (PR #41 review 2, finding 1)", async () => {
+  // Build c's tool chunk also loads huge mode's wasm, which answers 503 for now.
+  const W = '/_next/static/media/c-h.wasm';
+  const c = { ...tooled('c', ';w("static/media/c-h.wasm")'), [W]: 503 };
+  const sw = worker();
+  await stranded(sw, { c });
+  sw.tabs(['n']);
+  await sw.post(['/'], 'n');
+  assert.match(sw.cached('/tools/json-graph')!, /Graph a/, 'not replaced by a copy missing a file');
+  // The next worker, once the server has it: replaced, the wasm with it.
+  sw.serve({ ...c, [W]: 'wasm' });
+  const again = worker(undefined, sw.env);
+  await again.post(['/'], 'n');
+  assert.match(again.cached('/tools/json-graph')!, /Graph c/);
+  assert.ok(again.has(W));
+});
