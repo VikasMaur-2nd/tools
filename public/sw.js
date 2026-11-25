@@ -158,7 +158,7 @@ function filesIn(url, text) {
  * what the cache holds, `have` its keys); `deep` false: the roots only. `ok`: every required file is cached;
  * `files`: those found; `open`: a script or stylesheet among them isn't cached (what it names is unknown).
  */
-async function pageFiles(cache, roots, fetchMissing, deep = true, page = ORIGIN + '/', have = null, strict = false) {
+async function pageFiles(cache, roots, fetchMissing, deep = true, page = ORIGIN + '/', have = null) {
   const files = new Set();
   let open = false;
   let retry = false; // a download that may work later (5xx, 408, 429, the network) failed
@@ -179,7 +179,7 @@ async function pageFiles(cache, roots, fetchMissing, deep = true, page = ORIGIN 
         if (!cacheable(res)) {
           open = open || names;
           if (res.status >= 500 || res.status === 408 || res.status === 429) retry = true;
-          return !required && !(strict && isHashed(path)); // (a stray name holds no page back, but `strict`)
+          return !required; // (a name in a script that is no file holds no page back)
         }
         await cache.put(url, res.clone());
       } catch {
@@ -544,7 +544,7 @@ const renewals = new Set();
 
 /**
  * A cached page a follow can't complete (the server lacks a chunk) holds every deletion: the network's copy takes its
- * place if every hashed file it can load is there, as on a visit (publish), once per page while the worker runs.
+ * place if every hashed file it can load is there (commit checks them all), as on a visit (publish).
  */
 async function renew(cache, url) {
   renewals.add(url);
@@ -553,7 +553,7 @@ async function renew(cache, url) {
   const res = base && (await download(url, { cache: 'no-cache', credentials: 'same-origin' }).catch(() => null));
   if (!res) return renewals.delete(url); // (no answer: asked again later)
   const html = cacheable(res) && isHTML(res) && (await res.clone().text().catch(() => null));
-  const found = html && (await pageFiles(cache, extractAssets(html), true, true, url, null, true)); // (every hashed file)
+  const found = html && (await pageFiles(cache, extractAssets(html), true, true, url));
   if (found && found.ok && !found.open) await publish(cache, url, url, res, html, false, base, rev, Array.from(found.files));
 }
 
