@@ -89,9 +89,8 @@ function download(url, init) {
 }
 
 /**
- * The window clients (`all`: another worker's too), or null when the list doesn't come within CLIENTS_MS:
- * Firefox asks each tab's process for its state before answering, and a tab being closed or reloaded may
- * never reply.
+ * The window clients (`all`: another worker's too), or null if their list doesn't come within CLIENTS_MS (Firefox
+ * waits on every tab's process, and a closing one may never reply).
  */
 const windowTabs = (all) => within(self.clients.matchAll({ type: 'window', includeUncontrolled: all }), CLIENTS_MS, null).catch(() => null);
 /** Language prefix of a localized page (/es, /pt/tools/…), or ''. */
@@ -212,10 +211,8 @@ function sameFiles(a, b) {
 }
 
 /**
- * Puts a page (`res`, a 200) into the cache once its files are; resolves false when they
- * couldn't be (the copy there stays), else as commit(). A copy of the same build only gets
- * fresher HTML. `base`: the cached copy's HTML (or its promise) from before the page was asked for; `rev`: its
- * commits then (see revs).
+ * Puts a page (`res`, a 200) into the cache once its files are (else false: the copy there stays). `base`: the
+ * cached copy's HTML (or its promise) and `rev` its commits, from before the page was asked for.
  */
 async function storePage(cache, key, res, base, rev) {
   if (!isHTML(res)) {
@@ -264,11 +261,9 @@ let tidying = Promise.resolve();
 const serially = (fn) => (tidying = tidying.then(fn, fn));
 
 /**
- * The last step of storing a page (its HTML `html` already read), in the queue: no tidy-up deletes a file
- * between the checks and the page going in. Nothing is stored (false) if another build's copy went in since
- * this one was fetched (`base`: the copy then), nor, unless the copy there is of the same build (or with
- * `partial` there is none), if a hashed file the HTML names is gone. Then an old copy of another build
- * retires its files (tidy). Resolves { replaced, html }.
+ * The last step of storing a page (`html` read), in the queue. Nothing is stored (false) if another build's copy
+ * went in since it was fetched (`base`, `rev`), nor, unless the copy there is of the same build (or with `partial`
+ * there is none), if a hashed file it names is gone. An old copy of another build retires its files (tidy).
  */
 async function commit(cache, key, page, res, html, partial, base, rev, renewal) {
   const prev = await cache.match(key, MATCH);
@@ -304,9 +299,8 @@ function noteOpening(id) {
 }
 
 /**
- * The tabs that may run some build now (`ids`): every window client, another worker's too, and the
- * tabs being opened from the cache. `unnamed`: one of those has no id. Null when the list of window
- * clients doesn't come (see windowTabs): then they are unknown.
+ * The tabs that may run some build now (`ids`): every window client, another worker's too, and those opening
+ * (`unnamed`: one has no id). Null when their list doesn't come (see windowTabs).
  */
 async function liveTabs() {
   const tabs = await windowTabs(true);
@@ -349,20 +343,12 @@ async function needed(cache, keys) {
 }
 
 /**
- * Retires and deletes old builds' files (see the header). Run through `serially` only. `replaced`:
- * { html, page } when a cached page's copy was just replaced by another build's; `posted`: the files
- * a tab (`from`, its id) reports it loaded. Resolves true when deleting waited for pages whose files
- * aren't all known (see needed).
- *
- * Why no tab loses a file it needs (a tab runs a page's build, and may load any file of it later):
- *  - Every tab open or opening when a page's copy is replaced guards the generation its files (and every
- *    other file no cached page needs: routes reached by client-side navigation) go to.
- *  - A tab opened later got a cached page (its files stay while it is cached) or the network's (the
- *    current build, retired later with this tab among the tabs). A retired file it reports loading leaves
- *    its generation.
- *  - Deleting re-checks the cached pages, all their files known, and the generations that stay. While a
- *    page's files aren't all known nothing goes, past RETIRE_MS too: lingering, never a page broken offline.
- * A tab opening without an id stands as UNSEEN: OPENING_MS later, the tabs open then take its place.
+ * Retires and deletes old builds' files (see the header), in the queue. `replaced`: { html, page }, a cached copy
+ * replaced by another build's; `posted`: what a tab (`from`) reports it loaded. Resolves true when deleting waited
+ * for pages whose files aren't all known. No tab loses a file it needs: every tab open or opening when a copy is
+ * replaced guards the generation its files (and every file no cached page needs) go to; a later tab got a cached
+ * page or the current build; deleting re-checks the cached pages and the generations that stay, and waits while a
+ * page's files aren't all known (see renew). A tab opening without an id stands as UNSEEN, then the tabs open.
  */
 async function tidy(cache, replaced, posted, from) {
   const saved = await cache.match(RECORD);
@@ -515,8 +501,7 @@ self.addEventListener('message', (event) => {
         .then(() => first)
         .then(async (waited) => {
           if (!waited || !report) return;
-          // Deleting waited for pages whose files aren't all known: they are followed again (see renew), then it reruns.
-          // The first still incomplete as its follow ends (not a home, see renewable) is renewed, FETCH_MS at most.
+          // Deleting waited for pages whose files aren't all known: followed again (the first still not: see renew).
           const { open } = await needed(cache, await cache.keys());
           let fix = null;
           const pick = (u) => (f) => !fix && f && f.open && !HOME_RE.test(new URL(u).pathname) && renewable(u) && (fix = renew(cache, u));
