@@ -2206,6 +2206,16 @@ test('service worker: a tab served the cached page after a slow network failure 
   sw.tabs(['n', 'o']);
   sw.offline();
   assert.deepEqual(await loadsAll(sw, 'o', ['app.css', 'main.js', 'page.js', 'tool.js'].map((f) => `/_next/static/chunks/a-${f}`)), []);
+  sw.offline(false);
+  // A later tab opens; a minute on, the tab served build a closes: build a goes, though the later tab stays (it is
+  // that tab, by its id, that guarded them: not every tab open a minute on, as a tab without an id would make it).
+  sw.tabs(['n', 'o', 'x']);
+  sw.advance(61_000);
+  await sw.post(['/'], 'x');
+  assert.ok(sw.has('/_next/static/chunks/a-tool.js'));
+  sw.tabs(['x']);
+  await sw.post(['/'], 'x');
+  assert.ok(!sw.statics().some((p) => p.includes('/a-')), sw.statics().join(' '));
 });
 
 test("service worker: a report renews one page, and reports that overlap never ask for the same page twice (PR #41 review 2, finding 6)", async () => {
