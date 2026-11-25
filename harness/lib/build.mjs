@@ -49,7 +49,9 @@ function inUse(key) {
  * Build-time settings. `default` is what a visitor gets minus analytics and origin-trial tokens.
  * A variant is a separate build: Next.js bakes NEXT_PUBLIC_* values into the bundles.
  */
-const ADAPTER = fileURLToPath(new URL('./immutable-adapter.mjs', import.meta.url));
+/** A setting resolved when the build launches: the harness's adapter (in a key: its contents, see variantKey). */
+const ADAPTER = 'harness:immutable-adapter';
+const ADAPTER_FILE = fileURLToPath(new URL('./immutable-adapter.mjs', import.meta.url));
 export const VARIANTS = {
   default: {},
   // PostHog pointed at the local mock in harness/lib/posthog-mock.mjs (privacy suites). lib/analytics reads
@@ -74,7 +76,19 @@ const SCRUB = /^(NEXT_PUBLIC_|WEBMCP_ORIGIN_TRIAL$|POSTHOG_|VERCEL|NEXT_ADAPTER_
 /** The environment `next build` runs in for `variant`: this process's, scrubbed (SCRUB), then the variant's settings. */
 export function buildEnv(variant, base = process.env) {
   const env = Object.fromEntries(Object.entries(base).filter(([k]) => !SCRUB.test(k)));
-  return Object.assign(env, VARIANTS[variant], { NEXT_TELEMETRY_DISABLED: '1' });
+  for (const [k, v] of Object.entries(VARIANTS[variant])) env[k] = v === ADAPTER ? ADAPTER_FILE : v;
+  return Object.assign(env, { NEXT_TELEMETRY_DISABLED: '1' });
+}
+
+/**
+ * A build key's suffix for `variant`: its settings, hashed (none for `default`). The adapter counts by its contents
+ * (`read`), not its path: an edit makes a new build, and worktrees with the same files share one.
+ */
+export function variantKey(variant, read = (file) => readFileSync(file, 'utf8')) {
+  const settings = Object.entries(VARIANTS[variant])
+    .map(([k, v]) => [k, v === ADAPTER ? `sha256:${createHash('sha256').update(read(ADAPTER_FILE)).digest('hex')}` : v])
+    .sort(([a], [b]) => a.localeCompare(b));
+  return settings.length ? `-${createHash('sha256').update(JSON.stringify(settings)).digest('hex').slice(0, 12)}` : '';
 }
 
 const git = (args, opts = {}) => {
@@ -112,9 +126,7 @@ export async function ensureBuild({ ref, variant = 'default', log = console.log 
   if (!Object.hasOwn(VARIANTS, variant)) throw new Error(`unknown build variant: ${variant}`);
   const tree = treeOf(ref);
   // Variant definitions live in the excluded harness tree, but their values affect bundles.
-  const settings = Object.entries(VARIANTS[variant]).sort(([a], [b]) => a.localeCompare(b));
-  const suffix = settings.length ? `-${createHash('sha256').update(JSON.stringify(settings)).digest('hex').slice(0, 12)}` : '';
-  const key = `${tree.slice(0, 16)}-${variant}${suffix}`;
+  const key = `${tree.slice(0, 16)}-${variant}${variantKey(variant)}`;
   const dir = join(DIRS.builds, key);
   const done = () => existsSync(join(dir, '.next', 'BUILD_ID')) && existsSync(join(dir, '.harness-built'));
   const reused = await withLock(CACHE_LOCK, () => {

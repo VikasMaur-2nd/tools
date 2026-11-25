@@ -42,6 +42,7 @@ test("the offline checks' closure counts what scripts name root-relative too (hu
 
 type Build = {
   buildEnv(variant: string, base?: Record<string, string>): Record<string, string>;
+  variantKey(variant: string, read?: (file: string) => string): string;
 };
 const build = () => import(join(process.cwd(), 'harness/lib/build.mjs')) as Promise<Build>;
 
@@ -54,4 +55,13 @@ test("a harness build never inherits an adapter or a deployment id: only an immu
   const imm = buildEnv('immutable', outer);
   assert.match(imm.NEXT_ADAPTER_PATH, /harness\/lib\/immutable-adapter\.mjs$/);
   assert.ok(!('NEXT_DEPLOYMENT_ID' in imm));
+});
+
+test("an immutable build's key counts its adapter by contents, not by where it is", async () => {
+  const { variantKey } = await build();
+  assert.equal(variantKey('default'), '');
+  const one = variantKey('immutable', () => 'export default { name: "a" }');
+  assert.equal(variantKey('immutable', () => 'export default { name: "a" }'), one, 'the same adapter: the same build');
+  assert.notEqual(variantKey('immutable', () => 'export default { name: "b" }'), one, 'an edited one: a new build');
+  assert.notEqual(variantKey('immutable-redeploy', () => 'export default { name: "a" }'), one);
 });
