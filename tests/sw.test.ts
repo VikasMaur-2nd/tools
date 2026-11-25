@@ -1910,3 +1910,56 @@ test("service worker: a shell refresh whose lookup is slow fetches after it, nev
   await nav.done;
   assert.match(sw.cached('/')!, /Home c/);
 });
+
+// ── Production's file layout: /_next/static/immutable/ ──────────────────────────────────────────────────────────────
+
+/**
+ * A build in production's layout: Vercel's adapter turns on Next's supportsImmutableAssets, so content-hashed files
+ * are under /_next/static/immutable/ (chunks/, media/), and chunks name each other as "static/immutable/chunks/…".
+ */
+const immutable = (files: Files): Files =>
+  Object.fromEntries(Object.entries(files).map(([k, v]) => [k.replace(/static\/(chunks|media)\//g, 'static/immutable/$1/'), typeof v === 'string' ? v.replace(/static\/(chunks|media)\//g, 'static/immutable/$1/') : v]));
+
+test("service worker (production's layout): a page's lazy chunks are followed, and work offline", async () => {
+  const sw = worker();
+  const a = immutable(build('a'));
+  sw.serve(a);
+  await sw.install();
+  await sw.post(['/']);
+  assert.deepEqual(sw.statics(), filesOf('a', a));
+  sw.offline();
+  assert.deepEqual(await loadsAll(sw, 'off', filesOf('a', a)), []);
+});
+
+test("service worker (production's layout): after a deploy, the current build's lazy chunks stay, and its pages keep their lazy features offline", async () => {
+  const a = immutable(site('a'));
+  const b = immutable(site('b'));
+  const lazy = (files: Files) => filesOf('x', files);
+  const sw = worker();
+  sw.serve(a);
+  await sw.install();
+  // A tab of build a: its warm-up loads the features and reports what it loaded.
+  sw.tabs(['t']);
+  await sw.visit('/tools/json-graph', 't');
+  await sw.post(['/', '/tools/json-graph', ...lazy(a).filter((p) => !p.includes('-diff'))], 't');
+  // Build b: '/' comes in on a visit, whose tab (build b) reports what its warm-up loaded.
+  sw.serve(b);
+  sw.tabs(['t', 'u']);
+  await sw.visit('/', 'u');
+  await sw.visit('/', 'u');
+  await sw.post(['/', ...lazy(b).filter((p) => !p.includes('-diff'))], 'u');
+  // The tool page follows to build b on a visit (a replacement).
+  sw.tabs(['t', 'u', 'v']);
+  await sw.visit('/tools/json-graph', 'v');
+  assert.match(sw.cached('/tools/json-graph')!, /Graph b/);
+  // Those tabs close; a new tab of build b reports in.
+  sw.tabs(['n']);
+  sw.advance(61_000);
+  await sw.post(['/'], 'n');
+  // Build b whole (its lazy chunks too), build a gone; offline, every file of build b's pages loads.
+  const bFiles = lazy(b).filter((p) => !p.includes('-diff'));
+  for (const f of bFiles) assert.ok(sw.has(f), f);
+  assert.ok(!sw.statics().some((p) => p.includes('/a-')), sw.statics().join(' '));
+  sw.offline();
+  assert.deepEqual(await loadsAll(sw, 'n', bFiles), []);
+});

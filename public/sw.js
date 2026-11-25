@@ -51,7 +51,8 @@ const STATIC_RE = /\/_next\/static\/[^"'\\\s)<>]+/g;
 const ATTR_RE = /\s(?:href|src)="(\/(?!\/)[^"]*)"/g;
 const FILE_RE = /\.(?:m?js|css|json|webmanifest|ico|png|svg|jpe?g|webp|avif|gif|woff2?)(?:\?.*)?$/i;
 // Chunks a script loads later, named relative to /_next/; files a stylesheet names (font subsets for some scripts).
-const CHUNK_RE = /["'](static\/(?:chunks|media)\/[^"'\\\s]+)["']/g;
+// (Production's layout puts them under static/immutable/: Vercel's adapter turns on Next's supportsImmutableAssets.)
+const CHUNK_RE = /["'](static\/(?:immutable\/)?(?:chunks|media)\/[^"'\\\s]+)["']/g;
 const CSS_URL_RE = /url\(\s*["']?([^"')\s]+)/g;
 // The build a page is of: Next's build id, once in its RSC payload.
 const BUILD_RE = /\\"b\\":\\"([\w-]+)\\"/;
@@ -91,7 +92,7 @@ function download(url, init) {
 const windowTabs = (all) => within(self.clients.matchAll({ type: 'window', includeUncontrolled: all }), CLIENTS_MS, null).catch(() => null);
 /** Language prefix of a localized page (/es, /pt/tools/…), or ''. */
 const langHome = (path) => (/^\/[a-z]{2}(?=\/|$)/.exec(path) || [''])[0];
-const HUGE_STRINGS_RE = /^\/_next\/static\/media\/huge-strings\.([a-z]{2})\./;
+const HUGE_STRINGS_RE = /^\/_next\/static\/(?:immutable\/)?media\/huge-strings\.([a-z]{2})\./;
 /** Whether `url` is huge mode's dictionary of another language than the page's (`page`, a URL): not one of its files. */
 const otherStrings = (url, page) => {
   const m = HUGE_STRINGS_RE.exec(new URL(url).pathname);
