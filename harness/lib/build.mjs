@@ -8,6 +8,7 @@ import { createHash } from 'node:crypto';
 import { cpSync, existsSync, mkdirSync, readdirSync, readFileSync, rmSync, statSync, utimesSync, writeFileSync } from 'node:fs';
 import { createServer } from 'node:net';
 import { join, resolve } from 'node:path';
+import { fileURLToPath } from 'node:url';
 import { budget, DIRS, ROOT } from './env.mjs';
 import { withLock } from './lock.mjs';
 
@@ -48,6 +49,7 @@ function inUse(key) {
  * Build-time settings. `default` is what a visitor gets minus analytics and origin-trial tokens.
  * A variant is a separate build: Next.js bakes NEXT_PUBLIC_* values into the bundles.
  */
+const ADAPTER = fileURLToPath(new URL('./immutable-adapter.mjs', import.meta.url));
 export const VARIANTS = {
   default: {},
   // PostHog pointed at the local mock in harness/lib/posthog-mock.mjs (privacy suites). lib/analytics reads
@@ -57,6 +59,13 @@ export const VARIANTS = {
   // the lazily loaded PostHog chunk (lib/analytics/posthog.ts), so that chunk and the chunks naming it get
   // new hashes, like a real deploy. Identical code alone gives byte-identical chunks (only BUILD_ID differs).
   redeploy: { NEXT_PUBLIC_POSTHOG_UI_HOST: 'https://redeploy.harness.invalid' },
+  // Production's file layout: Vercel's adapter turns on Next's supportsImmutableAssets, so content-hashed files
+  // are served under /_next/static/immutable/ (chunks/, media/) and chunks name each other as
+  // "static/immutable/chunks/…". A harness adapter does the same (immutable-adapter.mjs, through
+  // NEXT_ADAPTER_PATH); next.config.ts is unchanged.
+  immutable: { NEXT_ADAPTER_PATH: ADAPTER },
+  // A redeploy of `immutable` (as `redeploy` is of `default`).
+  'immutable-redeploy': { NEXT_ADAPTER_PATH: ADAPTER, NEXT_PUBLIC_POSTHOG_UI_HOST: 'https://redeploy.harness.invalid' },
 };
 const SCRUB = /^(NEXT_PUBLIC_|WEBMCP_ORIGIN_TRIAL$|POSTHOG_|VERCEL)/;
 

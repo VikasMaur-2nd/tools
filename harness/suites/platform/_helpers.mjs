@@ -641,7 +641,7 @@ async function buildClosure(base, page) {
         const u = new URL(m[1], 'http://x' + p);
         if (u.origin === 'http://x' && u.pathname.startsWith('/_next/static/')) add(u.pathname);
       }
-    } else for (const m of text.matchAll(/["'](static\/(?:chunks|media)\/[^"'\\\s]+)["']/g)) add('/_next/' + m[1]);
+    } else for (const m of text.matchAll(/["'](static\/(?:immutable\/)?(?:chunks|media)\/[^"'\\\s]+)["']/g)) add('/_next/' + m[1]);
   }
   // (Names inside scripts that aren't files: the worker skips them too.)
   const real = [];
