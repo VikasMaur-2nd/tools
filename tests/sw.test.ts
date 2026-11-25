@@ -2159,3 +2159,21 @@ test("service worker: renewal's commit re-checks every file of the copy, so a cl
   const files = tag === 'c' ? [S, '/_next/static/chunks/c-tl.js'] : ['/_next/static/chunks/a-tl.js'];
   assert.deepEqual(await loadsAll(sw, 'off', files), []);
 });
+
+test("service worker: a slow renewal never puts its copy over one a visit stored meanwhile, the same files too (PR #41 review 2, finding 5)", async () => {
+  const sw = worker();
+  await stranded(sw);
+  sw.tabs(['n']);
+  // Renewal fetches build c's tool page; its tl.js is slow.
+  const release = sw.hold('/_next/static/chunks/c-tl.js');
+  const report = sw.postSoon(['/'], 'n');
+  await settle();
+  // Meanwhile a visit stores a newer copy of it (the same files, fresher HTML).
+  const c = tooled('c');
+  sw.serve({ ...c, '/tools/json-graph': (c['/tools/json-graph'] as string).replace('Graph c', 'Graph c, newer') });
+  await sw.visit('/tools/json-graph', 'v');
+  assert.match(sw.cached('/tools/json-graph')!, /Graph c, newer/);
+  release();
+  await report;
+  assert.match(sw.cached('/tools/json-graph')!, /Graph c, newer/);
+});

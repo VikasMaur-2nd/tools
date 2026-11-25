@@ -272,7 +272,7 @@ async function commit(cache, key, page, res, html, partial, base, rev, deps) {
   const files = extractAssets(html);
   const same = old !== null && sameFiles(extractAssets(old), files);
   if (!same && (old === null ? base !== null : base === null || !sameFiles(extractAssets(old), extractAssets(base)))) return false;
-  if (!same && rev !== undefined && rev !== (revs.get(page) || 0)) return false;
+  if ((!same || deps) && rev !== undefined && rev !== (revs.get(page) || 0)) return false; // (a renewal: never over a newer copy)
   // (`deps`: every file a renewal found its copy to need, not only what the HTML names: see renew.)
   if (deps || (!same && !(partial && !prev))) {
     const must = (deps || files).filter((u) => isHashed(new URL(u).pathname) && !otherStrings(u, page));
