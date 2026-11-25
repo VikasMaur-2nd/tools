@@ -1,6 +1,8 @@
 import { test } from 'node:test';
 import * as assert from 'node:assert/strict';
 import { createServer } from 'node:http';
+import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs';
+import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 
 // The harness's own code for the offline checks and its builds (harness/suites/platform/_helpers.mjs,
@@ -43,6 +45,7 @@ test("the offline checks' closure counts what scripts name root-relative too (hu
 type Build = {
   buildEnv(variant: string, base?: Record<string, string>): Record<string, string>;
   variantKey(variant: string, read?: (file: string) => string): string;
+  legacy(dir: string): boolean;
 };
 const build = () => import(join(process.cwd(), 'harness/lib/build.mjs')) as Promise<Build>;
 
@@ -64,4 +67,29 @@ test("an immutable build's key counts its adapter by contents, not by where it i
   assert.equal(variantKey('immutable', () => 'export default { name: "a" }'), one, 'the same adapter: the same build');
   assert.notEqual(variantKey('immutable', () => 'export default { name: "b" }'), one, 'an edited one: a new build');
   assert.notEqual(variantKey('immutable-redeploy', () => 'export default { name: "a" }'), one);
+});
+
+test('a build of code before the engine mark is told apart in either chunk layout', async () => {
+  const { legacy } = await build();
+  const dir = mkdtempSync(join(tmpdir(), 'harness-legacy-'));
+  try {
+    const chunks = (immutable: boolean, text: string) => {
+      const d = join(dir, '.next', 'static', ...(immutable ? ['immutable', 'chunks'] : ['chunks']));
+      rmSync(join(dir, '.next'), { recursive: true, force: true });
+      mkdirSync(d, { recursive: true });
+      writeFileSync(join(d, 'a.js'), text);
+    };
+    chunks(false, 'old()');
+    assert.equal(legacy(dir), true);
+    chunks(false, 'performance.mark("tk:engine")');
+    assert.equal(legacy(dir), false);
+    chunks(true, 'old()');
+    assert.equal(legacy(dir), true, 'an old ref built in the immutable layout');
+    chunks(true, 'performance.mark("tk:engine")');
+    assert.equal(legacy(dir), false);
+    rmSync(join(dir, '.next'), { recursive: true, force: true });
+    assert.equal(legacy(dir), false, 'no chunks at all: not told legacy');
+  } finally {
+    rmSync(dir, { recursive: true, force: true });
+  }
 });

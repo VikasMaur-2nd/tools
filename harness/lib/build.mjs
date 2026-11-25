@@ -168,9 +168,9 @@ export async function ensureBuild({ ref, variant = 'default', log = console.log 
 /**
  * True for builds of code older than the engine's `tk:engine` performance mark (commits before the
  * harness, e.g. `--base origin/main` until it merges): checks then wait the old way for the tool.
+ * Chunks are in .next/static/chunks, or .next/static/immutable/chunks in the immutable variants.
  */
-function legacy(dir) {
-  const chunks = join(dir, '.next', 'static', 'chunks');
+export function legacy(dir) {
   const files = [];
   const walk = (d) => {
     for (const e of readdirSync(d, { withFileTypes: true })) {
@@ -178,12 +178,12 @@ function legacy(dir) {
       else if (e.name.endsWith('.js')) files.push(join(d, e.name));
     }
   };
-  try {
-    walk(chunks);
-  } catch {
-    return false;
+  for (const chunks of [['chunks'], ['immutable', 'chunks']]) {
+    try {
+      walk(join(dir, '.next', 'static', ...chunks));
+    } catch {} // (not in this layout)
   }
-  return !files.some((f) => readFileSync(f, 'latin1').includes('tk:engine'));
+  return files.length > 0 && !files.some((f) => readFileSync(f, 'latin1').includes('tk:engine'));
 }
 
 /** Turbopack's cache from the newest earlier build makes this one incremental (about half the time). */
