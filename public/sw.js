@@ -63,8 +63,7 @@ const STRINGS_RE = /\/i18n\/[a-z]+-strings\.[a-z]{2}\.[0-9a-f]+\.json/g;
 /** Files named by their content: /_next/static files and those dictionaries (see the header). */
 const isHashed = (path) => isStatic(path) || /^\/i18n\/[a-z]+-strings\./.test(path);
 /**
- * A URL as the cache matches it: without its fragment. (Cache keys can keep one: WebKit lists a worker's
- * script under the URL it was started with, Turbopack's bootstrap plus #params=…, which pages name without.)
+ * A URL as the cache matches it: without its fragment (WebKit's keys keep one: a worker's script's #params=).
  */
 const bare = (url) => url.split('#')[0];
 const buildOf = (html) => (BUILD_RE.exec(html) || [])[1] || null;
@@ -180,7 +179,7 @@ async function pageFiles(cache, roots, fetchMissing, deep = true, page = ORIGIN 
         if (!cacheable(res)) {
           open = open || names;
           if (res.status >= 500 || res.status === 408 || res.status === 429) retry = true;
-          return !required && !(strict && isHashed(path)); // (a name in a script that is no file holds no page back, but with `strict`)
+          return !required && !(strict && isHashed(path)); // (a stray name holds no page back, but `strict`)
         }
         await cache.put(url, res.clone());
       } catch {
@@ -272,8 +271,8 @@ async function commit(cache, key, page, res, html, partial, base, rev, deps) {
   const files = extractAssets(html);
   const same = old !== null && sameFiles(extractAssets(old), files);
   if (!same && (old === null ? base !== null : base === null || !sameFiles(extractAssets(old), extractAssets(base)))) return false;
-  if ((!same || deps) && rev !== undefined && rev !== (revs.get(page) || 0)) return false; // (a renewal: never over a newer copy)
-  // (`deps`: every file a renewal found its copy to need, not only what the HTML names: see renew.)
+  if ((!same || deps) && rev !== undefined && rev !== (revs.get(page) || 0)) return false;
+  // (`deps`: a renewal's whole graph: see renew.)
   if (deps || (!same && !(partial && !prev))) {
     const must = (deps || files).filter((u) => isHashed(new URL(u).pathname) && !otherStrings(u, page));
     const held = await Promise.all(must.map((u) => cache.match(u, MATCH)));
@@ -318,9 +317,8 @@ async function liveTabs() {
 const UNSEEN = '?';
 
 /**
- * Whether a worker is on its way in: this one while it installs, or another installing or waiting (main's
- * too, brought back). It may be storing a page whose files it checked before, so nothing is deleted
- * meanwhile: the one it replaces is stopped when it becomes the active one (the spec's Activate).
+ * Whether a worker is on its way in (this one installing, or another installing or waiting): the one active may be
+ * storing a page whose files it checked, so nothing is deleted until it is stopped (the spec's Activate).
  */
 const arriving = () => !!(self.registration && (self.registration.installing || self.registration.waiting));
 
@@ -512,7 +510,7 @@ self.addEventListener('message', (event) => {
         .then(async (waited) => {
           if (!waited || !report) return;
           // Deleting waited for pages whose files aren't all known: they are followed again (see renew), then it reruns.
-          // One still not complete (not a home, not asked for yet) is renewed per report, for FETCH_MS at most.
+          // One still incomplete (not a home, not asked for yet) is renewed per report, FETCH_MS at most.
           const { open } = await needed(cache, await cache.keys());
           const found = await Promise.all(open.map((u) => followPage(cache, u)));
           const stuck = open.find((u, i) => found[i] && found[i].open && !HOME_RE.test(new URL(u).pathname) && !renewals.has(u));
@@ -541,19 +539,19 @@ async function followPage(cache, url) {
   return found;
 }
 
-/** Pages asked for by renew while this worker runs (from the start: a report meanwhile picks another). */
+/** Pages renew asked for while this worker runs. */
 const renewals = new Set();
 
 /**
  * A cached page a follow can't complete (the server lacks a chunk) holds every deletion: the network's copy takes its
- * place if whole, as on a visit (publish), once per page while the worker runs. Not a home (see refreshHomes).
+ * place if every hashed file it can load is there, as on a visit (publish), once per page while the worker runs.
  */
 async function renew(cache, url) {
   renewals.add(url);
   const rev = revs.get(url) || 0; // (the copy there before the fetch: see commit)
   const base = await htmlOf(url);
   const res = base && (await download(url, { cache: 'no-cache', credentials: 'same-origin' }).catch(() => null));
-  if (!res) return renewals.delete(url); // (no answer: asked for again on a later report)
+  if (!res) return renewals.delete(url); // (no answer: asked again later)
   const html = cacheable(res) && isHTML(res) && (await res.clone().text().catch(() => null));
   const found = html && (await pageFiles(cache, extractAssets(html), true, true, url, null, true)); // (every hashed file)
   if (found && found.ok && !found.open) await publish(cache, url, url, res, html, false, base, rev, Array.from(found.files));
