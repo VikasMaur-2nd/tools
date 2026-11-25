@@ -68,6 +68,8 @@ const isHashed = (path) => isStatic(path) || /^\/i18n\/[a-z]+-strings\./.test(pa
  */
 const bare = (url) => url.split('#')[0];
 const buildOf = (html) => (BUILD_RE.exec(html) || [])[1] || null;
+/** '/' and the language homes (/de…). */
+const HOME_RE = /^\/(?:[a-z]{2})?$/;
 
 /** `promise`'s value, or `fallback` once `ms` have passed without one (the promise may never settle). */
 function within(promise, ms, fallback) {
@@ -153,12 +155,9 @@ function filesIn(url, text) {
 }
 
 /**
- * The files of a page (see the header) from what its HTML names (`roots`), cached as they are found
- * unless `fetchMissing` is false (then only what the cache holds is followed, `have` its keys if
- * given); with `deep` false, only the roots. `page`: the page's URL (whose language's huge dictionary
- * it needs). `ok`: every file that had to make it is cached; `files`: the URLs found; `open`: a script
- * or stylesheet among them isn't cached, so what it names is unknown (a 404 too: it may be a moment
- * of a deploy).
+ * A page's files from what its HTML names (`roots`), cached as found unless `fetchMissing` is false (then
+ * what the cache holds, `have` its keys); `deep` false: the roots only. `ok`: every required file is cached;
+ * `files`: those found; `open`: a script or stylesheet among them isn't cached (what it names is unknown).
  */
 async function pageFiles(cache, roots, fetchMissing, deep = true, page = ORIGIN + '/', have = null) {
   const files = new Set();
@@ -459,7 +458,7 @@ async function refreshHomes(cache, url, html, replaced) {
   await Promise.all(
     keys.map(async (k) => {
       const p = new URL(k.url).pathname;
-      if (p === path || !/^\/(?:[a-z]{2})?$/.test(p)) return;
+      if (p === path || !HOME_RE.test(p)) return;
       const home = await cache.match(k, MATCH);
       const text = home && isHTML(home) ? await home.text() : null;
       const theirs = text && buildOf(text);
@@ -511,9 +510,9 @@ self.addEventListener('message', (event) => {
         .then(() => first)
         .then(async (waited) => {
           if (!waited || !report) return;
-          // Deleting waited for cached pages whose files aren't all known: those are followed again, then it runs again.
+          // Deleting waited for pages whose files aren't all known: they are followed again (see renew), then it reruns.
           const { open } = await needed(cache, await cache.keys());
-          await Promise.all(open.map((u) => followPage(cache, u)));
+          await Promise.all(open.map(async (u) => ((await followPage(cache, u)) || {}).open && renew(cache, u)));
           await serially(() => tidy(cache));
         })
         .catch(() => {});
@@ -535,6 +534,26 @@ async function followPage(cache, url) {
   if (followed.has(key)) return;
   const found = await pageFiles(cache, extractAssets(html), true, true, url);
   if (found.ok && !found.open && !found.retry) followed.add(key);
+  return found;
+}
+
+/** Pages renew fetched while this worker runs. */
+const renewed = new Set();
+
+/**
+ * A cached page a follow can't complete (the server lacks a chunk) holds every deletion: the network's copy takes its
+ * place if whole, as on a visit (publish), once per page while the worker runs. Not a home (see refreshHomes).
+ */
+async function renew(cache, url) {
+  if (renewed.has(url) || HOME_RE.test(new URL(url).pathname)) return;
+  const rev = revs.get(url) || 0; // (the copy there before the fetch: see commit)
+  const base = await htmlOf(url);
+  const res = base && (await download(url, { cache: 'no-cache', credentials: 'same-origin' }).catch(() => null));
+  if (!res) return;
+  renewed.add(url);
+  const html = cacheable(res) && isHTML(res) && (await res.clone().text().catch(() => null));
+  const found = html && (await pageFiles(cache, extractAssets(html), true, true, url));
+  if (found && found.ok && !found.open) await publish(cache, url, url, res, html, false, base, rev);
 }
 
 self.addEventListener('fetch', (event) => {
@@ -599,11 +618,8 @@ async function cacheFirst(event, req) {
 }
 
 /**
- * Turbopack's worker bootstrap reads its config from its URL's fragment (#params=…), and a
- * worker takes the URL of the response it gets. A cached copy can have been fetched without
- * the fragment (Safari lists resources without it, so the page hands over the bare URL), and
- * served as is it starts the worker without its config ("Missing worker bootstrap config").
- * A new Response has no URL, so the worker keeps the one it was created with.
+ * Turbopack's worker bootstrap reads its config from its URL's #params=, and a worker takes the URL of the
+ * response it gets (a cached copy may lack the fragment): a new Response has none, so it keeps its own.
  */
 const asNew = (res) => new Response(res.body, { status: res.status, statusText: res.statusText, headers: res.headers });
 
