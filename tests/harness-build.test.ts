@@ -39,3 +39,19 @@ test("the offline checks' closure counts what scripts name root-relative too (hu
     s.close();
   }
 });
+
+type Build = {
+  buildEnv(variant: string, base?: Record<string, string>): Record<string, string>;
+};
+const build = () => import(join(process.cwd(), 'harness/lib/build.mjs')) as Promise<Build>;
+
+test("a harness build never inherits an adapter or a deployment id: only an immutable variant gets the harness's adapter", async () => {
+  const { buildEnv } = await build();
+  const outer = { PATH: '/bin', NEXT_ADAPTER_PATH: '/elsewhere/adapter.mjs', NEXT_DEPLOYMENT_ID: 'dpl_1', NEXT_PUBLIC_X: '1' };
+  const env = buildEnv('default', outer);
+  assert.equal(env.PATH, '/bin');
+  assert.ok(!('NEXT_ADAPTER_PATH' in env) && !('NEXT_DEPLOYMENT_ID' in env) && !('NEXT_PUBLIC_X' in env), JSON.stringify(env));
+  const imm = buildEnv('immutable', outer);
+  assert.match(imm.NEXT_ADAPTER_PATH, /harness\/lib\/immutable-adapter\.mjs$/);
+  assert.ok(!('NEXT_DEPLOYMENT_ID' in imm));
+});

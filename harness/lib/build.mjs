@@ -67,7 +67,15 @@ export const VARIANTS = {
   // A redeploy of `immutable` (as `redeploy` is of `default`).
   'immutable-redeploy': { NEXT_ADAPTER_PATH: ADAPTER, NEXT_PUBLIC_POSTHOG_UI_HOST: 'https://redeploy.harness.invalid' },
 };
-const SCRUB = /^(NEXT_PUBLIC_|WEBMCP_ORIGIN_TRIAL$|POSTHOG_|VERCEL)/;
+// Never inherited by a build: values baked into bundles, and what changes the output's layout (an adapter, a
+// deployment id: an exported NEXT_ADAPTER_PATH would make a `default` build immutable, under the ordinary key).
+const SCRUB = /^(NEXT_PUBLIC_|WEBMCP_ORIGIN_TRIAL$|POSTHOG_|VERCEL|NEXT_ADAPTER_PATH$|NEXT_DEPLOYMENT_ID$)/;
+
+/** The environment `next build` runs in for `variant`: this process's, scrubbed (SCRUB), then the variant's settings. */
+export function buildEnv(variant, base = process.env) {
+  const env = Object.fromEntries(Object.entries(base).filter(([k]) => !SCRUB.test(k)));
+  return Object.assign(env, VARIANTS[variant], { NEXT_TELEMETRY_DISABLED: '1' });
+}
 
 const git = (args, opts = {}) => {
   const r = spawnSync('git', args, { cwd: ROOT, encoding: 'utf8', ...opts });
@@ -131,8 +139,7 @@ export async function ensureBuild({ ref, variant = 'default', log = console.log 
     log(`  build ${key}: installing`);
     run('pnpm', ['install', '--frozen-lockfile', '--prefer-offline', '--reporter=silent'], dir, {});
     log(`  build ${key}: next build (${describeRef(ref)})`);
-    const env = Object.fromEntries(Object.entries(process.env).filter(([k]) => !SCRUB.test(k)));
-    Object.assign(env, VARIANTS[variant], { NEXT_TELEMETRY_DISABLED: '1' });
+    const env = buildEnv(variant);
     // On a machine shared by several agents, HARNESS_HEAVY_LOCK names a lock file that serialises
     // builds with everyone else's (flock --close: the lock isn't inherited by anything the build starts).
     const next = [process.execPath, join(dir, 'node_modules/next/dist/bin/next'), 'build'];
