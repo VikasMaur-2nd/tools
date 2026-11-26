@@ -280,7 +280,7 @@ async function commit(cache, key, page, res, html, partial, base, rev, renewal) 
     const held = await Promise.all(must.map((u) => cache.match(u, MATCH)));
     if (held.indexOf(undefined) !== -1) return false;
   }
-  if (renewal && Date.now() >= renewal.end) return false; // (checked last: the lookups above may take long)
+  if (renewal && Date.now() >= renewal.end) return false; // (last: lookups may be slow)
   // (The HTML already read, as a new Response: the queue never waits on a network stream.)
   await cache.put(key, new Response(html, { status: res.status, statusText: res.statusText, headers: res.headers }));
   revs.set(page, (revs.get(page) || 0) + 1);
@@ -505,10 +505,9 @@ self.addEventListener('message', (event) => {
           if (!waited || !report) return;
           // Deleting waited for pages whose files aren't all known: followed again (the first still not: see renew).
           const { open } = await needed(cache, await cache.keys());
-          // (A page another copy of went in since its follow began, a renewal by another report say, is left alone.)
+          // (Not a page another copy of went in since its follow began; one failing doesn't end the wait for the others.)
           let fix = null;
           const pick = (u, rev) => (f) => !fix && f && f.open && rev === (revs.get(u) || 0) && !HOME_RE.test(new URL(u).pathname) && renewable(u) && (fix = renew(cache, u));
-          // (One that fails doesn't end the wait for the others: their renewal stays within the report.)
           await Promise.all(open.map((u) => followPage(cache, u).catch(() => null).then(pick(u, revs.get(u) || 0))));
           await fix;
           await serially(() => tidy(cache));
@@ -568,9 +567,9 @@ async function renewOnce(cache, url) {
     if (!res || later(res.status)) return false;
     if (!cacheable(res) || !isHTML(res)) return null;
     const html = await res.clone().text().catch(() => null);
-    if (html === null) return false; // (its body didn't come: may work later)
+    if (html === null) return false; // (no body: may work later)
     const found = await pageFiles(cache, extractAssets(html), true, true, url, null, ctl.signal);
-    if (found.gone) return null; // (a file of it answered 404/410, a script or not)
+    if (found.gone) return null; // (a file answered 404/410)
     if (!found.ok || found.retry) return false;
     if (found.open) return null;
     return !!(await publish(cache, url, url, res, html, false, base, rev, { files: Array.from(found.files), end }));
