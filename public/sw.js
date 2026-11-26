@@ -199,12 +199,20 @@ async function pageFiles(cache, roots, fetchMissing, deep = true, page = ORIGIN 
     }
     if (!names) return true;
     const text = named.has(url) ? '' : await res.text();
-    const results = await Promise.all(filesIn(url, text).map((u) => visit(u, false)));
+    const results = await all(filesIn(url, text).map((u) => visit(u, false)));
     return results.indexOf(false) === -1;
   };
-  const results = await Promise.all(roots.map((u) => visit(u, isHashed(new URL(u).pathname))));
+  const results = await all(roots.map((u) => visit(u, isHashed(new URL(u).pathname))));
   return { ok: results.indexOf(false) === -1, files, open, retry, gone };
 }
+
+/** Promise.all once every one has settled: a failure never leaves a download running past its caller. */
+const all = (ps) =>
+  Promise.allSettled(ps).then((rs) => {
+    const failed = rs.find((r) => r.status === 'rejected');
+    if (failed) throw failed.reason;
+    return rs.map((r) => r.value);
+  });
 
 /** Whether two pages name the same files (the same build of the same page). */
 function sameFiles(a, b) {

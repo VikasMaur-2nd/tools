@@ -2482,3 +2482,20 @@ test("service worker: a copy of the same files stored during the re-follow doesn
   await report;
   assert.match(sw.cached('/tools/json-graph')!, /Graph c/);
 });
+
+test("service worker: a page's walk waits for every file it started before a failure ends it (PR #41 review 5, finding 4)", async () => {
+  // '/' loads x.js and y.js later; reading x.js from the cache fails, y.js's download is slow.
+  const X = '/_next/static/chunks/x.js';
+  const Y = '/_next/static/chunks/y.js';
+  const sw = worker();
+  sw.serve({ '/': html('a', 'Home a'), '/_next/static/chunks/a-main.js': 'x.l("static/chunks/x.js");x.l("static/chunks/y.js")', '/_next/static/chunks/a-app.css': 'b{}', '/_next/static/chunks/a-page.js': 'p()', [X]: 'x()', [Y]: 'y()', '/icon.svg': '<svg/>' });
+  await sw.install();
+  sw.failMatch((u) => u.endsWith('/x.js'));
+  const release = sw.hold(Y);
+  const report = sw.postSoon(['/']);
+  await settle();
+  assert.ok(!(await settled(report)), 'still waiting for y.js');
+  release();
+  await report;
+  assert.ok(sw.has(Y), 'stored within the report');
+});
