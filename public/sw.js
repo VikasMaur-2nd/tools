@@ -271,6 +271,8 @@ async function commit(cache, key, page, res, html, partial, base, rev, renewal) 
   const prev = await cache.match(key, MATCH);
   const old = prev && isHTML(prev) ? await prev.text() : null;
   const files = extractAssets(html);
+  // A page names its build's scripts: an empty or other answer (a blip upstream) never takes a copy's place.
+  if (!files.some((u) => /^\/_next\/static\/.*\.m?js$/.test(new URL(u).pathname))) return false;
   const same = old !== null && sameFiles(extractAssets(old), files);
   if (!same && (old === null ? base !== null : base === null || !sameFiles(extractAssets(old), extractAssets(base)))) return false;
   // (`renewal`: { files, its whole graph, end, its deadline }: see renew.)

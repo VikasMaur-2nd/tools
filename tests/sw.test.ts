@@ -2432,3 +2432,23 @@ test("service worker: a re-follow that fails leaves the renewal and the clean-up
   // Its renewal happened within the report.
   assert.match(sw.cached('/tools/json-graph')!, /Graph c/);
 });
+
+test("service worker: an empty page, or one naming none of the build's scripts, never takes a cached page's place (PR #41 review 5, finding 1)", async () => {
+  const sw = worker();
+  await stranded(sw);
+  // Renewal: the network answers the tool page with an empty 200 for a moment.
+  sw.serve({ ...tooled('c'), '/tools/json-graph': '' });
+  sw.tabs(['n']);
+  await sw.post(['/'], 'n');
+  assert.match(sw.cached('/tools/json-graph')!, /Graph a/);
+  // A transient failure: once the page is whole again, a later report renews it.
+  sw.serve(tooled('c'));
+  await sw.post(['/'], 'n');
+  assert.match(sw.cached('/tools/json-graph')!, /Graph c/);
+  // A navigation, and a visit to '/', getting an empty or script-less page: the cached copies stay.
+  sw.serve({ ...tooled('c'), '/tools/json-graph': '<!doctype html><title>Oops</title>', '/': '' });
+  await sw.visit('/tools/json-graph', 'v');
+  await sw.visit('/', 'v');
+  assert.match(sw.cached('/tools/json-graph')!, /Graph c/);
+  assert.match(sw.cached('/')!, /Home c/);
+});
