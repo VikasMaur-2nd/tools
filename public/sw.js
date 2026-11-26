@@ -166,6 +166,7 @@ async function pageFiles(cache, roots, fetchMissing, deep = true, page = ORIGIN 
   const files = new Set();
   let open = false;
   let retry = false; // a download that may work later (5xx, 408, 429, the network) failed
+  let gone = false; // one answered 404 or 410
   const visit = async (url, required) => {
     if (files.has(url) || otherStrings(url, page) || url.endsWith('/')) return true; // (a directory is no file)
     if (files.size >= MAX_FILES) {
@@ -183,6 +184,7 @@ async function pageFiles(cache, roots, fetchMissing, deep = true, page = ORIGIN 
         if (!cacheable(res)) {
           open = open || names;
           if (later(res.status)) retry = true;
+          if (res.status === 404 || res.status === 410) gone = true;
           return !required; // (a name in a script that is no file holds no page back)
         }
         await cache.put(url, res.clone());
@@ -201,7 +203,7 @@ async function pageFiles(cache, roots, fetchMissing, deep = true, page = ORIGIN 
     return results.indexOf(false) === -1;
   };
   const results = await Promise.all(roots.map((u) => visit(u, isHashed(new URL(u).pathname))));
-  return { ok: results.indexOf(false) === -1, files, open, retry };
+  return { ok: results.indexOf(false) === -1, files, open, retry, gone };
 }
 
 /** Whether two pages name the same files (the same build of the same page). */
@@ -562,9 +564,11 @@ async function renewOnce(cache, url) {
     const base = await htmlOf(url);
     const res = base && (await download(url, { cache: 'no-cache', credentials: 'same-origin', signal: ctl.signal }).catch(() => null));
     if (!res || later(res.status)) return false;
-    const html = cacheable(res) && isHTML(res) && (await res.clone().text().catch(() => null));
-    const found = html && (await pageFiles(cache, extractAssets(html), true, true, url, null, ctl.signal));
-    if (!found) return null;
+    if (!cacheable(res) || !isHTML(res)) return null;
+    const html = await res.clone().text().catch(() => null);
+    if (html === null) return false; // (its body didn't come: may work later)
+    const found = await pageFiles(cache, extractAssets(html), true, true, url, null, ctl.signal);
+    if (found.gone) return null; // (a file of it answered 404/410, a script or not)
     if (!found.ok || found.retry) return false;
     if (found.open) return null;
     return !!(await publish(cache, url, url, res, html, false, base, rev, { files: Array.from(found.files), end }));

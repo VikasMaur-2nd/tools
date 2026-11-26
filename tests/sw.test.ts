@@ -2354,3 +2354,46 @@ test("service worker: a renewal whose commit is held past its deadline in a look
   await report;
   assert.match(sw.cached('/tools/json-graph')!, /Graph a/);
 });
+
+test("service worker: a renewal whose page's body stalls is tried again on a later report (PR #41 review 4, finding 2)", async () => {
+  const sw = worker();
+  await stranded(sw);
+  sw.tabs(['n']);
+  // The network's copy: its headers come, its body never ends (given up at the deadline).
+  sw.env.stallBody.add('/tools/json-graph');
+  const report = sw.postSoon(['/'], 'n');
+  await settle();
+  sw.advance(30_000);
+  await report;
+  assert.match(sw.cached('/tools/json-graph')!, /Graph a/);
+  // The server answers whole again: the next report renews it.
+  sw.env.stallBody.delete('/tools/json-graph');
+  await sw.post(['/'], 'n');
+  assert.match(sw.cached('/tools/json-graph')!, /Graph c/);
+});
+
+test("service worker: a file of the copy answering 404, a script's or a wasm, stops its renewal at once (PR #41 review 4, finding 2)", async () => {
+  const W = '/_next/static/media/c-h.wasm';
+  const sw = worker();
+  await stranded(sw, { c: { ...tooled('c', ';w("static/media/c-h.wasm")'), [W]: 404 } });
+  sw.tabs(['n']);
+  const before = fetchesOf(sw, '/tools/json-graph');
+  for (let i = 0; i < 3; i++) await sw.post(['/'], 'n');
+  assert.equal(fetchesOf(sw, '/tools/json-graph') - before, 1, 'asked for once, as for a script answering 404');
+  assert.match(sw.cached('/tools/json-graph')!, /Graph a/);
+});
+
+test("service worker: a renewal whose wasm is gone from the cache by its commit is refused there (PR #41 review 4, finding 2)", async () => {
+  const W = '/_next/static/media/c-h.wasm';
+  const sw = worker();
+  await stranded(sw, { c: { ...tooled('c', ';w("static/media/c-h.wasm")'), [W]: 'wasm' } });
+  sw.tabs(['n']);
+  // The follow caches the wasm (1st lookup); while the commit checks it (2nd), it is deleted.
+  const release = sw.holdMatch(W, 2);
+  const report = sw.postSoon(['/'], 'n');
+  await settle();
+  sw.env.store.delete(ORIGIN + W);
+  release();
+  await report;
+  assert.match(sw.cached('/tools/json-graph')!, /Graph a/);
+});
