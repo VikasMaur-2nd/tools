@@ -2452,3 +2452,13 @@ test("service worker: an empty page, or one naming none of the build's scripts, 
   assert.match(sw.cached('/tools/json-graph')!, /Graph c/);
   assert.match(sw.cached('/')!, /Home c/);
 });
+
+test("service worker: an optional file of the copy answering 404 (its manifest) doesn't stop its renewal (PR #41 review 5, finding 2)", async () => {
+  const c = tooled('c');
+  const page = (c['/tools/json-graph'] as string).replace('<link rel="icon"', '<link rel="manifest" href="/manifest.webmanifest"><link rel="icon"');
+  const sw = worker();
+  await stranded(sw, { c: { ...c, '/tools/json-graph': page, '/manifest.webmanifest': 404 } });
+  sw.tabs(['n']);
+  await sw.post(['/'], 'n');
+  assert.match(sw.cached('/tools/json-graph')!, /Graph c/);
+});

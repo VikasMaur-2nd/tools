@@ -166,7 +166,7 @@ async function pageFiles(cache, roots, fetchMissing, deep = true, page = ORIGIN 
   const files = new Set();
   let open = false;
   let retry = false; // a download that may work later (5xx, 408, 429, the network) failed
-  let gone = false; // one answered 404 or 410
+  let gone = false; // a hashed one answered 404 or 410
   const visit = async (url, required) => {
     if (files.has(url) || otherStrings(url, page) || url.endsWith('/')) return true; // (a directory is no file)
     if (files.size >= MAX_FILES) {
@@ -184,7 +184,7 @@ async function pageFiles(cache, roots, fetchMissing, deep = true, page = ORIGIN 
         if (!cacheable(res)) {
           open = open || names;
           if (later(res.status)) retry = true;
-          if (res.status === 404 || res.status === 410) gone = true;
+          if ((res.status === 404 || res.status === 410) && isHashed(path)) gone = true; // (one a page must have: see commit)
           return !required; // (a name in a script that is no file holds no page back)
         }
         await cache.put(url, res.clone());
