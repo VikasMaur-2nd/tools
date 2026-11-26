@@ -2414,3 +2414,21 @@ test("service worker: a report whose re-follow ends after another report renewed
   await a;
   assert.equal(fetchesOf(sw, '/tools/json-graph') - before, 1);
 });
+
+test("service worker: a re-follow that fails leaves the renewal and the clean-up inside the report (PR #41 review 4, finding 4)", async () => {
+  // Build a's diff page is incomplete too; reading its missing chunk from the cache fails (a storage error).
+  const a = { ...tooled('a'), '/_next/static/chunks/a-diff.js': 'x.l("static/chunks/a-dl.js")', '/_next/static/chunks/a-dl.js': 'dl()' };
+  const sw = worker();
+  await stranded(sw, { a, pages: ['/tools/json-diff'] });
+  sw.failMatch((u) => u.endsWith('/a-dl.js'));
+  sw.tabs(['n']);
+  // The tool page's re-follow is slow.
+  const release = sw.hold('/_next/static/chunks/a-tl.js');
+  const report = sw.postSoon(['/'], 'n');
+  await settle();
+  assert.ok(!(await settled(report)), 'the report waits for the other re-follow');
+  release();
+  await report;
+  // Its renewal happened within the report.
+  assert.match(sw.cached('/tools/json-graph')!, /Graph c/);
+});

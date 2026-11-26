@@ -508,7 +508,8 @@ self.addEventListener('message', (event) => {
           // (A page another copy of went in since its follow began, a renewal by another report say, is left alone.)
           let fix = null;
           const pick = (u, rev) => (f) => !fix && f && f.open && rev === (revs.get(u) || 0) && !HOME_RE.test(new URL(u).pathname) && renewable(u) && (fix = renew(cache, u));
-          await Promise.all(open.map((u) => followPage(cache, u).then(pick(u, revs.get(u) || 0))));
+          // (One that fails doesn't end the wait for the others: their renewal stays within the report.)
+          await Promise.all(open.map((u) => followPage(cache, u).catch(() => null).then(pick(u, revs.get(u) || 0))));
           await fix;
           await serially(() => tidy(cache));
         })
