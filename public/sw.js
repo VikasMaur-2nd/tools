@@ -507,10 +507,18 @@ self.addEventListener('message', (event) => {
           if (!waited || !report) return;
           // Deleting waited for pages whose files aren't all known: followed again (the first still not: see renew).
           const { open } = await needed(cache, await cache.keys());
-          // (Not a page another copy of went in since its follow began; one failing doesn't end the wait for the others.)
+          // (A page another copy of went in since its follow began: that copy is followed instead, once. One failing
+          // doesn't end the wait for the others.)
           let fix = null;
-          const pick = (u, rev) => (f) => !fix && f && f.open && rev === (revs.get(u) || 0) && !HOME_RE.test(new URL(u).pathname) && renewable(u) && (fix = renew(cache, u));
-          await Promise.all(open.map((u) => followPage(cache, u).catch(() => null).then(pick(u, revs.get(u) || 0))));
+          const pick = (u, again) => {
+            const rev = revs.get(u) || 0;
+            return followPage(cache, u).catch(() => null).then((f) => {
+              if (fix || !f || !f.open) return;
+              if (rev !== (revs.get(u) || 0)) return again && pick(u, false);
+              if (!HOME_RE.test(new URL(u).pathname) && renewable(u)) fix = renew(cache, u);
+            });
+          };
+          await Promise.all(open.map((u) => pick(u, true)));
           await fix;
           await serially(() => tidy(cache));
         })

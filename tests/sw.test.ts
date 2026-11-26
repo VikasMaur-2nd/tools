@@ -2462,3 +2462,23 @@ test("service worker: an optional file of the copy answering 404 (its manifest) 
   await sw.post(['/'], 'n');
   assert.match(sw.cached('/tools/json-graph')!, /Graph c/);
 });
+
+test("service worker: a copy of the same files stored during the re-follow doesn't make the report skip a page still incomplete (PR #41 review 5, finding 3)", async () => {
+  const a = tooled('a');
+  const sw = worker();
+  await stranded(sw);
+  sw.tabs(['n']);
+  // The report's re-follow of build a's missing chunk is slow; meanwhile a visit stores build a's page again
+  // (fresher HTML, the same files: still incomplete).
+  const release = sw.hold('/_next/static/chunks/a-tl.js');
+  const report = sw.postSoon(['/'], 'n');
+  await settle();
+  const c = tooled('c');
+  sw.serve({ ...c, '/tools/json-graph': (a['/tools/json-graph'] as string).replace('Graph a', 'Graph a, again') });
+  await sw.visit('/tools/json-graph', 'v');
+  assert.match(sw.cached('/tools/json-graph')!, /Graph a, again/);
+  sw.serve(c);
+  release();
+  await report;
+  assert.match(sw.cached('/tools/json-graph')!, /Graph c/);
+});
