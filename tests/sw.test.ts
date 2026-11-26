@@ -2397,3 +2397,20 @@ test("service worker: a renewal whose wasm is gone from the cache by its commit 
   await report;
   assert.match(sw.cached('/tools/json-graph')!, /Graph a/);
 });
+
+test("service worker: a report whose re-follow ends after another report renewed the page doesn't renew it again (PR #41 review 4, finding 3)", async () => {
+  const sw = worker();
+  await stranded(sw);
+  sw.tabs(['n', 'n2']);
+  const before = fetchesOf(sw, '/tools/json-graph');
+  // Report A's re-follow of build a's missing chunk is slow; report B renews the page meanwhile.
+  const release = sw.hold('/_next/static/chunks/a-tl.js');
+  const a = sw.postSoon(['/'], 'n');
+  await settle();
+  await sw.post(['/'], 'n2');
+  assert.match(sw.cached('/tools/json-graph')!, /Graph c/);
+  // A's re-follow ends (the old copy incomplete): the page isn't asked for again.
+  release();
+  await a;
+  assert.equal(fetchesOf(sw, '/tools/json-graph') - before, 1);
+});
