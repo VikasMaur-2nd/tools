@@ -2499,3 +2499,22 @@ test("service worker: a page's walk waits for every file it started before a fai
   await report;
   assert.ok(sw.has(Y), 'stored within the report');
 });
+
+test("service worker: a report cleans up last, within its lifetime, once every re-follow is done (PR #41 review 5, test note)", async () => {
+  // Build a's diff page is incomplete too; its missing chunk is still on the server, but slow.
+  const a = { ...tooled('a'), '/_next/static/chunks/a-diff.js': 'x.l("static/chunks/a-dl.js")', '/_next/static/chunks/a-dl.js': 'dl()' };
+  const sw = worker();
+  await stranded(sw, { a, pages: ['/tools/json-diff'] });
+  sw.serve({ ...tooled('c'), '/_next/static/chunks/a-dl.js': 'dl()' });
+  sw.tabs(['n']);
+  const release = sw.hold('/_next/static/chunks/a-dl.js');
+  const report = sw.postSoon(['/'], 'n');
+  await settle();
+  // The tool page is renewed, but the diff page still holds the clean-up (its chunk not in yet).
+  assert.match(sw.cached('/tools/json-graph')!, /Graph c/);
+  assert.ok(sw.statics().some((p) => p.endsWith('/b-graph.js')), 'build b held');
+  // Its chunk comes: by the time the report is done, build b is gone.
+  release();
+  await report;
+  assert.ok(!sw.statics().some((p) => p.includes('/b-')), sw.statics().join(' '));
+});
