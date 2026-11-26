@@ -59,6 +59,16 @@ The existing `VARIANTS` settings are unchanged:
 - `redeploy` sets `NEXT_PUBLIC_POSTHOG_UI_HOST=https://redeploy.harness.invalid`.
   This changes a lazy chunk and the entry chunk that names it while preserving
   the site's behavior. Both offline builds are cached by the normal build cache.
+- `immutable` and `immutable-redeploy` are the same two builds in production's
+  file layout. Vercel's adapter turns on Next's `supportsImmutableAssets`, so
+  hashed files live under `/_next/static/immutable/` and chunks name each other
+  as `"static/immutable/chunks/…"`. A harness adapter
+  (`harness/lib/immutable-adapter.mjs`, loaded through `NEXT_ADAPTER_PATH`) does
+  the same; `next.config.ts` is unchanged. Run the offline suite against them
+  with `HARNESS_OFFLINE_IMMUTABLE=1 pnpm e2e platform/offline`. Under an adapter,
+  prerendered HTML is written to `.next/server/route-cache/`, so tools that read
+  `.next/server/app/` don't apply to these builds; the offline suite fetches
+  over HTTP.
 
 The proxy uses fresh ports, cuts worker connections as well as page connections,
 and reports outstanding worker work over a MessageChannel. Update scenarios add

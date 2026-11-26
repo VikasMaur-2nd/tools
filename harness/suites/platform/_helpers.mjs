@@ -641,7 +641,11 @@ async function buildClosure(base, page) {
         const u = new URL(m[1], 'http://x' + p);
         if (u.origin === 'http://x' && u.pathname.startsWith('/_next/static/')) add(u.pathname);
       }
-    } else for (const m of text.matchAll(/["'](static\/(?:chunks|media)\/[^"'\\\s]+)["']/g)) add('/_next/' + m[1]);
+    } else {
+      // (As the worker's filesIn: quoted names relative to /_next/, and root-relative ones, such as huge mode's wasm.)
+      for (const m of text.matchAll(/["'](static\/(?:immutable\/)?(?:chunks|media)\/[^"'\\\s]+)["']/g)) add('/_next/' + m[1]);
+      for (const m of text.matchAll(/\/_next\/static\/[^"'\\\s)<>]+/g)) add(m[0]);
+    }
   }
   // (Names inside scripts that aren't files: the worker skips them too.)
   const real = [];

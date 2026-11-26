@@ -14,7 +14,13 @@ import {
   CACHE_NAME, POLL, WATCH_POSTS, cacheKeys, cachedText, closure, missingFromCache, opened, serveVariant, startProxy, swIdle, swVersion, test, unreachable, until, waitInCache,
 } from './_helpers.mjs';
 
-defaults({ engines: 'all', serviceWorkers: 'allow', allowErrors: true, tags: ['offline'], timeout: 300_000 });
+// HARNESS_OFFLINE_IMMUTABLE=1: the same checks against production's file layout, /_next/static/immutable/
+// (the `immutable` and `immutable-redeploy` builds: see VARIANTS in harness/lib/build.mjs).
+const IMMUTABLE = !!process.env.HARNESS_OFFLINE_IMMUTABLE;
+const BUILD = IMMUTABLE ? 'immutable' : 'default';
+const REDEPLOY = IMMUTABLE ? 'immutable-redeploy' : 'redeploy';
+
+defaults({ engines: 'all', serviceWorkers: 'allow', allowErrors: true, tags: ['offline'], timeout: 300_000, variant: BUILD });
 
 const DOC = JSON.stringify({ users: [{ id: 1, name: 'Ada', tags: ['a', 'b'] }, { id: 2, name: 'Grace', tags: [] }], total: 2 }, null, 2);
 /**
@@ -252,8 +258,8 @@ test('localized: after one visit, the Schema view and Flatten show their own str
   }
 });
 
-test("deploy: a tab open during a deploy keeps its build offline; new tabs get the new one", { variant: 'redeploy' }, async (t) => {
-  const A = (await serveVariant('default')).base;
+test("deploy: a tab open during a deploy keeps its build offline; new tabs get the new one", { variant: REDEPLOY }, async (t) => {
+  const A = (await serveVariant(BUILD)).base;
   const proxy = await startProxy({ A, A2: t.base });
   try {
     const [a, a2] = await Promise.all([closure(A), closure(t.base)]);
@@ -325,8 +331,8 @@ test("deploy: a tab open during a deploy keeps its build offline; new tabs get t
   }
 });
 
-test('fail404: a deploy with a file missing leaves the cached build whole offline', { variant: 'redeploy' }, async (t) => {
-  const A = (await serveVariant('default')).base;
+test('fail404: a deploy with a file missing leaves the cached build whole offline', { variant: REDEPLOY }, async (t) => {
+  const A = (await serveVariant(BUILD)).base;
   const proxy = await startProxy({ A, A2: t.base });
   try {
     const [a, a2] = await Promise.all([closure(A), closure(t.base)]);
@@ -387,8 +393,8 @@ async function newShell(t, page, named) {
   }, { timeout: t.budget(30_000), what: 'the updated worker to cache the new shell' }).then(() => true, () => false);
 }
 
-test('swupdate: a worker update first seen on a tool page installs the new shell and preserves old tabs', { variant: 'redeploy' }, async (t) => {
-  const A = (await serveVariant('default')).base;
+test('swupdate: a worker update first seen on a tool page installs the new shell and preserves old tabs', { variant: REDEPLOY }, async (t) => {
+  const A = (await serveVariant(BUILD)).base;
   const proxy = await startProxy({ A, A2: t.base }, { workerVersions: true });
   try {
     const [a, a2] = await Promise.all([closure(A), closure(t.base)]);
@@ -412,8 +418,8 @@ test('swupdate: a worker update first seen on a tool page installs the new shell
   }
 });
 
-test('upgrade: the frozen production worker upgrades without breaking its cached tabs', { variant: 'redeploy' }, async (t) => {
-  const A = (await serveVariant('default')).base;
+test('upgrade: the frozen production worker upgrades without breaking its cached tabs', { variant: REDEPLOY }, async (t) => {
+  const A = (await serveVariant(BUILD)).base;
   // Keep the old worker fixed as app code changes. Reuse build A for its HTML and
   // assets, so the migration needs only the same two builds as a normal deploy.
   const legacyWorker = readFileSync(new URL('./fixtures/legacy-sw.js', import.meta.url), 'utf8');
@@ -445,8 +451,8 @@ test('upgrade: the frozen production worker upgrades without breaking its cached
   }
 });
 
-test('toolpage: a deploy seen on a tool page brings the shell along, keeps the old tab whole, then cleans up', { variant: 'redeploy' }, async (t) => {
-  const A = (await serveVariant('default')).base;
+test('toolpage: a deploy seen on a tool page brings the shell along, keeps the old tab whole, then cleans up', { variant: REDEPLOY }, async (t) => {
+  const A = (await serveVariant(BUILD)).base;
   const proxy = await startProxy({ A, A2: t.base });
   const TOOL = '/tools/json-validator';
   try {
@@ -497,8 +503,8 @@ test('toolpage: a deploy seen on a tool page brings the shell along, keeps the o
   }
 });
 
-test("rollback: a deploy back to the previous build keeps both builds' tabs whole offline, then each build's leftovers go", { variant: 'redeploy' }, async (t) => {
-  const A = (await serveVariant('default')).base;
+test("rollback: a deploy back to the previous build keeps both builds' tabs whole offline, then each build's leftovers go", { variant: REDEPLOY }, async (t) => {
+  const A = (await serveVariant(BUILD)).base;
   const proxy = await startProxy({ A, A2: t.base });
   try {
     const [a, a2] = await Promise.all([closure(A), closure(t.base)]);
@@ -558,8 +564,8 @@ test("rollback: a deploy back to the previous build keeps both builds' tabs whol
   }
 });
 
-test("homeretry: a shell that couldn't follow a tool page to its new build follows on the next visit", { variant: 'redeploy' }, async (t) => {
-  const A = (await serveVariant('default')).base;
+test("homeretry: a shell that couldn't follow a tool page to its new build follows on the next visit", { variant: REDEPLOY }, async (t) => {
+  const A = (await serveVariant(BUILD)).base;
   const proxy = await startProxy({ A, A2: t.base });
   const TOOL = '/tools/json-validator';
   try {

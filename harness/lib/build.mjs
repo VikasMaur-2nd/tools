@@ -8,6 +8,7 @@ import { createHash } from 'node:crypto';
 import { cpSync, existsSync, mkdirSync, readdirSync, readFileSync, rmSync, statSync, utimesSync, writeFileSync } from 'node:fs';
 import { createServer } from 'node:net';
 import { join, resolve } from 'node:path';
+import { fileURLToPath } from 'node:url';
 import { budget, DIRS, ROOT } from './env.mjs';
 import { withLock } from './lock.mjs';
 
@@ -48,6 +49,9 @@ function inUse(key) {
  * Build-time settings. `default` is what a visitor gets minus analytics and origin-trial tokens.
  * A variant is a separate build: Next.js bakes NEXT_PUBLIC_* values into the bundles.
  */
+/** A setting resolved when the build launches: the harness's adapter (in a key: its contents, see variantKey). */
+const ADAPTER = 'harness:immutable-adapter';
+const ADAPTER_FILE = fileURLToPath(new URL('./immutable-adapter.mjs', import.meta.url));
 export const VARIANTS = {
   default: {},
   // PostHog pointed at the local mock in harness/lib/posthog-mock.mjs (privacy suites). lib/analytics reads
@@ -57,8 +61,35 @@ export const VARIANTS = {
   // the lazily loaded PostHog chunk (lib/analytics/posthog.ts), so that chunk and the chunks naming it get
   // new hashes, like a real deploy. Identical code alone gives byte-identical chunks (only BUILD_ID differs).
   redeploy: { NEXT_PUBLIC_POSTHOG_UI_HOST: 'https://redeploy.harness.invalid' },
+  // Production's file layout: Vercel's adapter turns on Next's supportsImmutableAssets, so content-hashed files
+  // are served under /_next/static/immutable/ (chunks/, media/) and chunks name each other as
+  // "static/immutable/chunks/…". A harness adapter does the same (immutable-adapter.mjs, through
+  // NEXT_ADAPTER_PATH); next.config.ts is unchanged.
+  immutable: { NEXT_ADAPTER_PATH: ADAPTER },
+  // A redeploy of `immutable` (as `redeploy` is of `default`).
+  'immutable-redeploy': { NEXT_ADAPTER_PATH: ADAPTER, NEXT_PUBLIC_POSTHOG_UI_HOST: 'https://redeploy.harness.invalid' },
 };
-const SCRUB = /^(NEXT_PUBLIC_|WEBMCP_ORIGIN_TRIAL$|POSTHOG_|VERCEL)/;
+// Never inherited by a build: values baked into bundles, and what changes the output's layout (an adapter, a
+// deployment id: an exported NEXT_ADAPTER_PATH would make a `default` build immutable, under the ordinary key).
+const SCRUB = /^(NEXT_PUBLIC_|WEBMCP_ORIGIN_TRIAL$|POSTHOG_|VERCEL|NEXT_ADAPTER_PATH$|NEXT_DEPLOYMENT_ID$)/;
+
+/** The environment `next build` runs in for `variant`: this process's, scrubbed (SCRUB), then the variant's settings. */
+export function buildEnv(variant, base = process.env) {
+  const env = Object.fromEntries(Object.entries(base).filter(([k]) => !SCRUB.test(k)));
+  for (const [k, v] of Object.entries(VARIANTS[variant])) env[k] = v === ADAPTER ? ADAPTER_FILE : v;
+  return Object.assign(env, { NEXT_TELEMETRY_DISABLED: '1' });
+}
+
+/**
+ * A build key's suffix for `variant`: its settings, hashed (none for `default`). The adapter counts by its contents
+ * (`read`), not its path: an edit makes a new build, and worktrees with the same files share one.
+ */
+export function variantKey(variant, read = (file) => readFileSync(file, 'utf8')) {
+  const settings = Object.entries(VARIANTS[variant])
+    .map(([k, v]) => [k, v === ADAPTER ? `sha256:${createHash('sha256').update(read(ADAPTER_FILE)).digest('hex')}` : v])
+    .sort(([a], [b]) => a.localeCompare(b));
+  return settings.length ? `-${createHash('sha256').update(JSON.stringify(settings)).digest('hex').slice(0, 12)}` : '';
+}
 
 const git = (args, opts = {}) => {
   const r = spawnSync('git', args, { cwd: ROOT, encoding: 'utf8', ...opts });
@@ -95,9 +126,7 @@ export async function ensureBuild({ ref, variant = 'default', log = console.log 
   if (!Object.hasOwn(VARIANTS, variant)) throw new Error(`unknown build variant: ${variant}`);
   const tree = treeOf(ref);
   // Variant definitions live in the excluded harness tree, but their values affect bundles.
-  const settings = Object.entries(VARIANTS[variant]).sort(([a], [b]) => a.localeCompare(b));
-  const suffix = settings.length ? `-${createHash('sha256').update(JSON.stringify(settings)).digest('hex').slice(0, 12)}` : '';
-  const key = `${tree.slice(0, 16)}-${variant}${suffix}`;
+  const key = `${tree.slice(0, 16)}-${variant}${variantKey(variant)}`;
   const dir = join(DIRS.builds, key);
   const done = () => existsSync(join(dir, '.next', 'BUILD_ID')) && existsSync(join(dir, '.harness-built'));
   const reused = await withLock(CACHE_LOCK, () => {
@@ -122,8 +151,7 @@ export async function ensureBuild({ ref, variant = 'default', log = console.log 
     log(`  build ${key}: installing`);
     run('pnpm', ['install', '--frozen-lockfile', '--prefer-offline', '--reporter=silent'], dir, {});
     log(`  build ${key}: next build (${describeRef(ref)})`);
-    const env = Object.fromEntries(Object.entries(process.env).filter(([k]) => !SCRUB.test(k)));
-    Object.assign(env, VARIANTS[variant], { NEXT_TELEMETRY_DISABLED: '1' });
+    const env = buildEnv(variant);
     // On a machine shared by several agents, HARNESS_HEAVY_LOCK names a lock file that serialises
     // builds with everyone else's (flock --close: the lock isn't inherited by anything the build starts).
     const next = [process.execPath, join(dir, 'node_modules/next/dist/bin/next'), 'build'];
@@ -140,9 +168,9 @@ export async function ensureBuild({ ref, variant = 'default', log = console.log 
 /**
  * True for builds of code older than the engine's `tk:engine` performance mark (commits before the
  * harness, e.g. `--base origin/main` until it merges): checks then wait the old way for the tool.
+ * Chunks are in .next/static/chunks, or .next/static/immutable/chunks in the immutable variants.
  */
-function legacy(dir) {
-  const chunks = join(dir, '.next', 'static', 'chunks');
+export function legacy(dir) {
   const files = [];
   const walk = (d) => {
     for (const e of readdirSync(d, { withFileTypes: true })) {
@@ -150,12 +178,12 @@ function legacy(dir) {
       else if (e.name.endsWith('.js')) files.push(join(d, e.name));
     }
   };
-  try {
-    walk(chunks);
-  } catch {
-    return false;
+  for (const chunks of [['chunks'], ['immutable', 'chunks']]) {
+    try {
+      walk(join(dir, '.next', 'static', ...chunks));
+    } catch {} // (not in this layout)
   }
-  return !files.some((f) => readFileSync(f, 'latin1').includes('tk:engine'));
+  return files.length > 0 && !files.some((f) => readFileSync(f, 'latin1').includes('tk:engine'));
 }
 
 /** Turbopack's cache from the newest earlier build makes this one incremental (about half the time). */
