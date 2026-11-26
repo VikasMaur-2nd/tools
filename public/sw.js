@@ -272,13 +272,13 @@ async function commit(cache, key, page, res, html, partial, base, rev, renewal) 
   const same = old !== null && sameFiles(extractAssets(old), files);
   if (!same && (old === null ? base !== null : base === null || !sameFiles(extractAssets(old), extractAssets(base)))) return false;
   // (`renewal`: { files, its whole graph, end, its deadline }: see renew.)
-  if (renewal && Date.now() > renewal.end) return false;
   if ((!same || renewal) && rev !== undefined && rev !== (revs.get(page) || 0)) return false;
   if (renewal || (!same && !(partial && !prev))) {
     const must = (renewal ? renewal.files : files).filter((u) => isHashed(new URL(u).pathname) && !otherStrings(u, page));
     const held = await Promise.all(must.map((u) => cache.match(u, MATCH)));
     if (held.indexOf(undefined) !== -1) return false;
   }
+  if (renewal && Date.now() >= renewal.end) return false; // (checked last: the lookups above may take long)
   // (The HTML already read, as a new Response: the queue never waits on a network stream.)
   await cache.put(key, new Response(html, { status: res.status, statusText: res.statusText, headers: res.headers }));
   revs.set(page, (revs.get(page) || 0) + 1);

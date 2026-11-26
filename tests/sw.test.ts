@@ -2340,3 +2340,17 @@ test("service worker (production's layout): renewal follows the copy's lazy chun
   assert.match(sw.cached('/tools/json-graph')!, /Graph c/);
   for (const f of ['chunks/c-tl.js', 'media/c-h.wasm', 'chunks/c-graph.js']) assert.ok(sw.has('/_next/static/immutable/' + f), f);
 });
+
+test("service worker: a renewal whose commit is held past its deadline in a lookup never publishes (PR #41 review 4, finding 1)", async () => {
+  const sw = worker();
+  await stranded(sw);
+  sw.tabs(['n']);
+  // The renewal's own follow reads build c's tl.js (1st lookup); its commit's check of it (2nd) takes past the deadline.
+  const release = sw.holdMatch('/_next/static/chunks/c-tl.js', 2);
+  const report = sw.postSoon(['/'], 'n');
+  await settle();
+  sw.advance(31_000);
+  release();
+  await report;
+  assert.match(sw.cached('/tools/json-graph')!, /Graph a/);
+});
