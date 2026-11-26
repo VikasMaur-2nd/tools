@@ -184,7 +184,7 @@ async function pageFiles(cache, roots, fetchMissing, deep = true, page = ORIGIN 
         if (!cacheable(res)) {
           open = open || names;
           if (later(res.status)) retry = true;
-          if ((res.status === 404 || res.status === 410) && isHashed(path)) gone = true; // (one a page must have: see commit)
+          if ((res.status === 404 || res.status === 410) && isHashed(path)) gone = true; // (one commit requires)
           return !required; // (a name in a script that is no file holds no page back)
         }
         await cache.put(url, res.clone());
@@ -206,7 +206,7 @@ async function pageFiles(cache, roots, fetchMissing, deep = true, page = ORIGIN 
   return { ok: results.indexOf(false) === -1, files, open, retry, gone };
 }
 
-/** Promise.all once every one has settled: a failure never leaves a download running past its caller. */
+/** Promise.all, settled only once all have: a failure leaves no download running past its caller. */
 const all = (ps) =>
   Promise.allSettled(ps).then((rs) => {
     const failed = rs.find((r) => r.status === 'rejected');
@@ -279,7 +279,7 @@ async function commit(cache, key, page, res, html, partial, base, rev, renewal) 
   const prev = await cache.match(key, MATCH);
   const old = prev && isHTML(prev) ? await prev.text() : null;
   const files = extractAssets(html);
-  // A page names its build's scripts: an empty or other answer (a blip upstream) never takes a copy's place.
+  // (A page names its build's scripts: an empty or other answer never goes in.)
   if (!files.some((u) => /^\/_next\/static\/.*\.m?js$/.test(new URL(u).pathname))) return false;
   const same = old !== null && sameFiles(extractAssets(old), files);
   if (!same && (old === null ? base !== null : base === null || !sameFiles(extractAssets(old), extractAssets(base)))) return false;
@@ -515,8 +515,7 @@ self.addEventListener('message', (event) => {
           if (!waited || !report) return;
           // Deleting waited for pages whose files aren't all known: followed again (the first still not: see renew).
           const { open } = await needed(cache, await cache.keys());
-          // (A page another copy of went in since its follow began: that copy is followed instead, once. One failing
-          // doesn't end the wait for the others.)
+          // (A page whose copy changed meanwhile: the new copy is followed, once. A failure doesn't end the wait.)
           let fix = null;
           const pick = (u, again) => {
             const rev = revs.get(u) || 0;
