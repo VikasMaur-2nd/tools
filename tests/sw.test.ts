@@ -2518,3 +2518,58 @@ test("service worker: a report cleans up last, within its lifetime, once every r
   await report;
   assert.ok(!sw.statics().some((p) => p.includes('/b-')), sw.statics().join(' '));
 });
+
+test("service worker: a renewal answered by a script-less page naming a file that's gone is tried again later (PR #41 review 6, finding 1)", async () => {
+  const sw = worker();
+  await stranded(sw);
+  // For a moment the tool page is an error page naming an old stylesheet the server no longer has.
+  const oops = '<!doctype html><title>Oops</title><link rel="stylesheet" href="/_next/static/chunks/old-app.css">';
+  sw.serve({ ...tooled('c'), '/tools/json-graph': oops, '/_next/static/chunks/old-app.css': 404 });
+  sw.tabs(['n']);
+  await sw.post(['/'], 'n');
+  assert.match(sw.cached('/tools/json-graph')!, /Graph a/);
+  // Not a page: no reason to give up. Once the page is back, a later report renews it.
+  sw.serve(tooled('c'));
+  await sw.post(['/'], 'n');
+  assert.match(sw.cached('/tools/json-graph')!, /Graph c/);
+});
+
+test("service worker: a page stored anew while its old copy's re-follow completes is followed too (PR #41 review 6, finding 2)", async () => {
+  const sw = worker();
+  await stranded(sw);
+  sw.tabs(['n']);
+  // The old copy's missing chunk is back on the server, but slow; meanwhile a visit stores build c's page (its own
+  // lazy chunk, c-tl.js, not cached by the visit).
+  sw.serve({ ...tooled('c'), '/_next/static/chunks/a-tl.js': 'tl()' });
+  const release = sw.hold('/_next/static/chunks/a-tl.js');
+  const report = sw.postSoon(['/'], 'n');
+  await settle();
+  await sw.visit('/tools/json-graph', 'v');
+  assert.match(sw.cached('/tools/json-graph')!, /Graph c/);
+  assert.ok(!sw.has('/_next/static/chunks/c-tl.js'), 'not followed by the visit');
+  // The old copy's walk now completes: the report follows the copy there now, not just the one it started with.
+  release();
+  await report;
+  assert.ok(sw.has('/_next/static/chunks/c-tl.js'), 'the new copy followed');
+});
+
+test("service worker: one page's walk failing doesn't end a report whose other page is still downloading (PR #41 review 6, finding 3)", async () => {
+  // '/' names one more script than the tool page; reading it from the cache fails. The tool page's lazy chunk is slow.
+  const a = tooled('a');
+  a['/'] = html('a', 'Home a', '<script src="/_next/static/chunks/a-home.js"></script>');
+  a['/_next/static/chunks/a-home.js'] = 'home()';
+  const sw = worker();
+  sw.serve(a);
+  await sw.install();
+  sw.tabs(['t']);
+  await sw.visit('/tools/json-graph', 't');
+  assert.ok(!sw.has('/_next/static/chunks/a-tl.js'));
+  sw.failMatch((u) => u.endsWith('/a-home.js'));
+  const release = sw.hold('/_next/static/chunks/a-tl.js');
+  const report = sw.postSoon(['/', '/tools/json-graph'], 't');
+  await settle();
+  assert.ok(!(await settled(report)), 'still waiting for the tool page');
+  release();
+  await report;
+  assert.ok(sw.has('/_next/static/chunks/a-tl.js'), 'stored within the report');
+});

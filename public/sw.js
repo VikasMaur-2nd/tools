@@ -214,6 +214,9 @@ const all = (ps) =>
     return rs.map((r) => r.value);
   });
 
+/** Whether HTML naming `files` is a page of the app: it names its build's scripts (an empty or other answer doesn't). */
+const isPage = (files) => files.some((u) => /^\/_next\/static\/.*\.m?js$/.test(new URL(u).pathname));
+
 /** Whether two pages name the same files (the same build of the same page). */
 function sameFiles(a, b) {
   const set = new Set(a);
@@ -279,8 +282,7 @@ async function commit(cache, key, page, res, html, partial, base, rev, renewal) 
   const prev = await cache.match(key, MATCH);
   const old = prev && isHTML(prev) ? await prev.text() : null;
   const files = extractAssets(html);
-  // (A page names its build's scripts: an empty or other answer never goes in.)
-  if (!files.some((u) => /^\/_next\/static\/.*\.m?js$/.test(new URL(u).pathname))) return false;
+  if (!isPage(files)) return false;
   const same = old !== null && sameFiles(extractAssets(old), files);
   if (!same && (old === null ? base !== null : base === null || !sameFiles(extractAssets(old), extractAssets(base)))) return false;
   // (`renewal`: { files, its whole graph, end, its deadline }: see renew.)
@@ -509,7 +511,7 @@ self.addEventListener('message', (event) => {
       // closed since, and their files can go; what this tab loaded stays (see tidy).
       const first = serially(() => tidy(cache, null, urls, from)).catch(() => false);
       return Promise.all(urls.map((u) => cacheIfMissing(cache, u)))
-        .then(() => Promise.all(urls.map((u) => followPage(cache, u)))) // the page has settled: its chunks (see the header)
+        .then(() => all(urls.map((u) => followPage(cache, u)))) // the page has settled: its chunks (see the header)
         .then(() => first)
         .then(async (waited) => {
           if (!waited || !report) return;
@@ -520,8 +522,9 @@ self.addEventListener('message', (event) => {
           const pick = (u, again) => {
             const rev = revs.get(u) || 0;
             return followPage(cache, u).catch(() => null).then((f) => {
-              if (fix || !f || !f.open) return;
-              if (rev !== (revs.get(u) || 0)) return again && pick(u, false);
+              if (fix) return;
+              if (rev !== (revs.get(u) || 0)) return again && pick(u, false); // (before its result: that was the old copy's)
+              if (!f || !f.open) return;
               if (!HOME_RE.test(new URL(u).pathname) && renewable(u)) fix = renew(cache, u);
             });
           };
@@ -584,7 +587,7 @@ async function renewOnce(cache, url) {
     if (!res || later(res.status)) return false;
     if (!cacheable(res) || !isHTML(res)) return null;
     const html = await res.clone().text().catch(() => null);
-    if (html === null) return false; // (no body: may work later)
+    if (html === null || !isPage(extractAssets(html))) return false; // (no body, or not a page: may work later)
     const found = await pageFiles(cache, extractAssets(html), true, true, url, null, ctl.signal);
     if (found.gone) return null; // (a file answered 404/410)
     if (!found.ok || found.retry) return false;
