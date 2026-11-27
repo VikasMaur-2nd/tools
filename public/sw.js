@@ -63,11 +63,12 @@ const STRINGS_RE = /\/i18n\/[a-z]+-strings\.[a-z]{2}\.[0-9a-f]+\.json/g;
 /** Files named by their content: /_next/static files and those dictionaries (see the header). */
 const isHashed = (path) => isStatic(path) || /^\/i18n\/[a-z]+-strings\./.test(path);
 /**
- * A URL as the cache matches it: without its fragment. (Cache keys can keep one: WebKit lists a worker's
- * script under the URL it was started with, Turbopack's bootstrap plus #params=…, which pages name without.)
+ * A URL as the cache matches it: without its fragment (WebKit's keys keep one: a worker's script's #params=).
  */
 const bare = (url) => url.split('#')[0];
 const buildOf = (html) => (BUILD_RE.exec(html) || [])[1] || null;
+/** '/' and the language homes (/de…). */
+const HOME_RE = /^\/(?:[a-z]{2})?$/;
 
 /** `promise`'s value, or `fallback` once `ms` have passed without one (the promise may never settle). */
 function within(promise, ms, fallback) {
@@ -76,18 +77,20 @@ function within(promise, ms, fallback) {
   return Promise.race([promise, late]).finally(() => clearTimeout(timer));
 }
 
-/** fetch() for the worker's own downloads, never a page's request: given up (aborted) after FETCH_MS, body included. */
+/** fetch() for the worker's own downloads, never a page's request: given up (aborted) after FETCH_MS, body included, or with `init.signal`. */
 function download(url, init) {
   if (typeof AbortController !== 'function') return fetch(url, init);
   const ctl = new AbortController();
   setTimeout(() => ctl.abort(), FETCH_MS);
+  const outer = init && init.signal;
+  if (outer && outer.aborted) ctl.abort();
+  else if (outer) outer.addEventListener('abort', () => ctl.abort());
   return fetch(url, Object.assign({}, init, { signal: ctl.signal }));
 }
 
 /**
- * The window clients (`all`: another worker's too), or null when the list doesn't come within CLIENTS_MS:
- * Firefox asks each tab's process for its state before answering, and a tab being closed or reloaded may
- * never reply.
+ * The window clients (`all`: another worker's too), or null if their list doesn't come within CLIENTS_MS (Firefox
+ * waits on every tab's process, and a closing one may never reply).
  */
 const windowTabs = (all) => within(self.clients.matchAll({ type: 'window', includeUncontrolled: all }), CLIENTS_MS, null).catch(() => null);
 /** Language prefix of a localized page (/es, /pt/tools/…), or ''. */
@@ -113,6 +116,8 @@ function bypass(url, headers) {
 
 /** Only full, same-origin, non-redirected 200s are worth keeping. */
 const cacheable = (res) => res && res.status === 200 && res.type === 'basic' && !res.redirected;
+/** A status that may pass (5xx, 408, 429). */
+const later = (status) => status >= 500 || status === 408 || status === 429;
 
 /** Same-origin asset URLs referenced by an HTML document. */
 function extractAssets(html) {
@@ -153,19 +158,17 @@ function filesIn(url, text) {
 }
 
 /**
- * The files of a page (see the header) from what its HTML names (`roots`), cached as they are found
- * unless `fetchMissing` is false (then only what the cache holds is followed, `have` its keys if
- * given); with `deep` false, only the roots. `page`: the page's URL (whose language's huge dictionary
- * it needs). `ok`: every file that had to make it is cached; `files`: the URLs found; `open`: a script
- * or stylesheet among them isn't cached, so what it names is unknown (a 404 too: it may be a moment
- * of a deploy).
+ * A page's files from what its HTML names (`roots`), cached as found unless `fetchMissing` is false (then
+ * what the cache holds, `have` its keys); `deep` false: the roots only. `ok`: every required file is cached;
+ * `files`: those found; `open`: a script or stylesheet among them isn't cached (what it names is unknown).
  */
-async function pageFiles(cache, roots, fetchMissing, deep = true, page = ORIGIN + '/', have = null) {
+async function pageFiles(cache, roots, fetchMissing, deep = true, page = ORIGIN + '/', have = null, signal) {
   const files = new Set();
   let open = false;
   let retry = false; // a download that may work later (5xx, 408, 429, the network) failed
+  let gone = false; // a hashed one answered 404 or 410
   const visit = async (url, required) => {
-    if (files.has(url) || otherStrings(url, page)) return true;
+    if (files.has(url) || otherStrings(url, page) || url.endsWith('/')) return true; // (a directory is no file)
     if (files.size >= MAX_FILES) {
       open = true; // (past the cap the rest is unknown)
       return true;
@@ -177,10 +180,11 @@ async function pageFiles(cache, roots, fetchMissing, deep = true, page = ORIGIN 
     let res = have && !have.has(bare(url)) ? null : have && (!names || named.has(url)) ? true : await cache.match(url, MATCH);
     if (!res && fetchMissing) {
       try {
-        res = await download(url, { credentials: 'same-origin' });
+        res = await download(url, { credentials: 'same-origin', signal });
         if (!cacheable(res)) {
           open = open || names;
-          if (res.status >= 500 || res.status === 408 || res.status === 429) retry = true;
+          if (later(res.status)) retry = true;
+          if ((res.status === 404 || res.status === 410) && isHashed(path)) gone = true; // (one commit requires)
           return !required; // (a name in a script that is no file holds no page back)
         }
         await cache.put(url, res.clone());
@@ -195,12 +199,23 @@ async function pageFiles(cache, roots, fetchMissing, deep = true, page = ORIGIN 
     }
     if (!names) return true;
     const text = named.has(url) ? '' : await res.text();
-    const results = await Promise.all(filesIn(url, text).map((u) => visit(u, false)));
+    const results = await all(filesIn(url, text).map((u) => visit(u, false)));
     return results.indexOf(false) === -1;
   };
-  const results = await Promise.all(roots.map((u) => visit(u, isHashed(new URL(u).pathname))));
-  return { ok: results.indexOf(false) === -1, files, open, retry };
+  const results = await all(roots.map((u) => visit(u, isHashed(new URL(u).pathname))));
+  return { ok: results.indexOf(false) === -1, files, open, retry, gone };
 }
+
+/** Promise.all, settled only once all have: a failure leaves no download running past its caller. */
+const all = (ps) =>
+  Promise.allSettled(ps).then((rs) => {
+    const failed = rs.find((r) => r.status === 'rejected');
+    if (failed) throw failed.reason;
+    return rs.map((r) => r.value);
+  });
+
+/** Whether HTML naming `files` is a page of the app: it names its build's scripts (an empty or other answer doesn't). */
+const isPage = (files) => files.some((u) => /^\/_next\/static\/.*\.m?js$/.test(new URL(u).pathname));
 
 /** Whether two pages name the same files (the same build of the same page). */
 function sameFiles(a, b) {
@@ -209,10 +224,8 @@ function sameFiles(a, b) {
 }
 
 /**
- * Puts a page (`res`, a 200) into the cache once its files are; resolves false when they
- * couldn't be (the copy there stays), else as commit(). A copy of the same build only gets
- * fresher HTML. `base`: the cached copy's HTML (or its promise) from before the page was asked for; `rev`: its
- * commits then (see revs).
+ * Puts a page (`res`, a 200) into the cache once its files are (else false: the copy there stays). `base`: the
+ * cached copy's HTML (or its promise) and `rev` its commits, from before the page was asked for.
  */
 async function storePage(cache, key, res, base, rev) {
   if (!isHTML(res)) {
@@ -236,8 +249,8 @@ const revs = new Map();
 const htmlOf = (key) => cachedCopy(key).then((r) => (r && isHTML(r) ? r.text() : null));
 
 /** commit() in its turn; a new '/' committed tells every tab a new version is ready. */
-async function publish(cache, key, page, res, html, partial, base, rev) {
-  const done = await serially(() => commit(cache, key, page, res, html, partial, base, rev));
+async function publish(cache, key, page, res, html, partial, base, rev, renewal) {
+  const done = await serially(() => commit(cache, key, page, res, html, partial, base, rev, renewal));
   if (done && done.replaced && page === ORIGIN + '/') {
     const tabs = await windowTabs(true); // (another worker's too: tabs it still controls while this one installs)
     if (tabs) tabs.forEach((c) => c.postMessage({ type: 'updated' }));
@@ -261,24 +274,25 @@ let tidying = Promise.resolve();
 const serially = (fn) => (tidying = tidying.then(fn, fn));
 
 /**
- * The last step of storing a page (its HTML `html` already read), in the queue: no tidy-up deletes a file
- * between the checks and the page going in. Nothing is stored (false) if another build's copy went in since
- * this one was fetched (`base`: the copy then), nor, unless the copy there is of the same build (or with
- * `partial` there is none), if a hashed file the HTML names is gone. Then an old copy of another build
- * retires its files (tidy). Resolves { replaced, html }.
+ * The last step of storing a page (`html` read), in the queue. Nothing is stored (false) if another build's copy
+ * went in since it was fetched (`base`, `rev`), nor, unless the copy there is of the same build (or with `partial`
+ * there is none), if a hashed file it names is gone. An old copy of another build retires its files (tidy).
  */
-async function commit(cache, key, page, res, html, partial, base, rev) {
+async function commit(cache, key, page, res, html, partial, base, rev, renewal) {
   const prev = await cache.match(key, MATCH);
   const old = prev && isHTML(prev) ? await prev.text() : null;
   const files = extractAssets(html);
+  if (!isPage(files)) return false;
   const same = old !== null && sameFiles(extractAssets(old), files);
   if (!same && (old === null ? base !== null : base === null || !sameFiles(extractAssets(old), extractAssets(base)))) return false;
-  if (!same && rev !== undefined && rev !== (revs.get(page) || 0)) return false;
-  if (!same && !(partial && !prev)) {
-    const must = files.filter((u) => isHashed(new URL(u).pathname) && !otherStrings(u, page));
+  // (`renewal`: { files, its whole graph, end, its deadline }: see renew.)
+  if ((!same || renewal) && rev !== undefined && rev !== (revs.get(page) || 0)) return false;
+  if (renewal || (!same && !(partial && !prev))) {
+    const must = (renewal ? renewal.files : files).filter((u) => isHashed(new URL(u).pathname) && !otherStrings(u, page));
     const held = await Promise.all(must.map((u) => cache.match(u, MATCH)));
     if (held.indexOf(undefined) !== -1) return false;
   }
+  if (renewal && Date.now() >= renewal.end) return false; // (last: lookups may be slow)
   // (The HTML already read, as a new Response: the queue never waits on a network stream.)
   await cache.put(key, new Response(html, { status: res.status, statusText: res.statusText, headers: res.headers }));
   revs.set(page, (revs.get(page) || 0) + 1);
@@ -290,7 +304,7 @@ async function commit(cache, key, page, res, html, partial, base, rev) {
 /**
  * Tabs being opened: every navigation (it may run a cached page's build, or the network's, which may share
  * files with an old one), until its tab shows among the clients a moment after its page is served, or
- * OPENING_MS. `id`: resultingClientId, '' in browsers without one.
+ * OPENING_MS after that (noted again then). `id`: resultingClientId, '' in browsers without one.
  */
 let opening = [];
 function noteOpening(id) {
@@ -299,9 +313,8 @@ function noteOpening(id) {
 }
 
 /**
- * The tabs that may run some build now (`ids`): every window client, another worker's too, and the
- * tabs being opened from the cache. `unnamed`: one of those has no id. Null when the list of window
- * clients doesn't come (see windowTabs): then they are unknown.
+ * The tabs that may run some build now (`ids`): every window client, another worker's too, and those opening
+ * (`unnamed`: one has no id). Null when their list doesn't come (see windowTabs).
  */
 async function liveTabs() {
   const tabs = await windowTabs(true);
@@ -318,9 +331,8 @@ async function liveTabs() {
 const UNSEEN = '?';
 
 /**
- * Whether a worker is on its way in: this one while it installs, or another installing or waiting (main's
- * too, brought back). It may be storing a page whose files it checked before, so nothing is deleted
- * meanwhile: the one it replaces is stopped when it becomes the active one (the spec's Activate).
+ * Whether a worker is on its way in (this one installing, or another installing or waiting): the one active may be
+ * storing a page whose files it checked, so nothing is deleted until it is stopped (the spec's Activate).
  */
 const arriving = () => !!(self.registration && (self.registration.installing || self.registration.waiting));
 
@@ -345,20 +357,12 @@ async function needed(cache, keys) {
 }
 
 /**
- * Retires and deletes old builds' files (see the header). Run through `serially` only. `replaced`:
- * { html, page } when a cached page's copy was just replaced by another build's; `posted`: the files
- * a tab (`from`, its id) reports it loaded. Resolves true when deleting waited for pages whose files
- * aren't all known (see needed).
- *
- * Why no tab loses a file it needs (a tab runs a page's build, and may load any file of it later):
- *  - Every tab open or opening when a page's copy is replaced guards the generation its files (and every
- *    other file no cached page needs: routes reached by client-side navigation) go to.
- *  - A tab opened later got a cached page (its files stay while it is cached) or the network's (the
- *    current build, retired later with this tab among the tabs). A retired file it reports loading leaves
- *    its generation.
- *  - Deleting re-checks the cached pages, all their files known, and the generations that stay. While a
- *    page's files aren't all known nothing goes, past RETIRE_MS too: lingering, never a page broken offline.
- * A tab opening without an id stands as UNSEEN: OPENING_MS later, the tabs open then take its place.
+ * Retires and deletes old builds' files (see the header), in the queue. `replaced`: { html, page }, a cached copy
+ * replaced by another build's; `posted`: what a tab (`from`) reports it loaded. Resolves true when deleting waited
+ * for pages whose files aren't all known. No tab loses a file it needs: every tab open or opening when a copy is
+ * replaced guards the generation its files (and every file no cached page needs) go to; a later tab got a cached
+ * page or the current build; deleting re-checks the cached pages and the generations that stay, and waits while a
+ * page's files aren't all known (see renew). A tab opening without an id stands as UNSEEN, then the tabs open.
  */
 async function tidy(cache, replaced, posted, from) {
   const saved = await cache.match(RECORD);
@@ -459,7 +463,7 @@ async function refreshHomes(cache, url, html, replaced) {
   await Promise.all(
     keys.map(async (k) => {
       const p = new URL(k.url).pathname;
-      if (p === path || !/^\/(?:[a-z]{2})?$/.test(p)) return;
+      if (p === path || !HOME_RE.test(p)) return;
       const home = await cache.match(k, MATCH);
       const text = home && isHTML(home) ? await home.text() : null;
       const theirs = text && buildOf(text);
@@ -507,13 +511,25 @@ self.addEventListener('message', (event) => {
       // closed since, and their files can go; what this tab loaded stays (see tidy).
       const first = serially(() => tidy(cache, null, urls, from)).catch(() => false);
       return Promise.all(urls.map((u) => cacheIfMissing(cache, u)))
-        .then(() => Promise.all(urls.map((u) => followPage(cache, u)))) // the page has settled: its chunks (see the header)
+        .then(() => all(urls.map((u) => followPage(cache, u)))) // the page has settled: its chunks (see the header)
         .then(() => first)
         .then(async (waited) => {
           if (!waited || !report) return;
-          // Deleting waited for cached pages whose files aren't all known: those are followed again, then it runs again.
+          // Deleting waited for pages whose files aren't all known: followed again (the first still not: see renew).
           const { open } = await needed(cache, await cache.keys());
-          await Promise.all(open.map((u) => followPage(cache, u)));
+          // (A page whose copy changed meanwhile: the new copy is followed, once. A failure doesn't end the wait.)
+          let fix = null;
+          const pick = (u, again) => {
+            const rev = revs.get(u) || 0;
+            return followPage(cache, u).catch(() => null).then((f) => {
+              if (fix) return;
+              if (rev !== (revs.get(u) || 0)) return again && pick(u, false); // (before its result: that was the old copy's)
+              if (!f || !f.open) return;
+              if (!HOME_RE.test(new URL(u).pathname) && renewable(u)) fix = renew(cache, u);
+            });
+          };
+          await Promise.all(open.map((u) => pick(u, true)));
+          await fix;
           await serially(() => tidy(cache));
         })
         .catch(() => {});
@@ -535,6 +551,51 @@ async function followPage(cache, url) {
   if (followed.has(key)) return;
   const found = await pageFiles(cache, extractAssets(html), true, true, url);
   if (found.ok && !found.open && !found.retry) followed.add(key);
+  return found;
+}
+
+/** Renewals while this worker runs, by page: { busy, tries } (tries: failures that may pass; three at most). */
+const renewals = new Map();
+const renewable = (url) => {
+  const r = renewals.get(url);
+  return !r || (!r.busy && r.tries < 3);
+};
+
+/**
+ * A cached page a follow can't complete (the server lacks a chunk) holds every deletion: the network's copy takes its
+ * place if every hashed file it can load is there (commit checks them all), as on a visit (publish). One that may
+ * work later (no answer, a 5xx, a commit refused) is tried again on a later report.
+ */
+async function renew(cache, url) {
+  const r = renewals.get(url) || { tries: 0 };
+  renewals.set(url, Object.assign(r, { busy: true }));
+  const done = await renewOnce(cache, url).catch(() => false); // (true: in; null: for good; false: may work later)
+  r.busy = false;
+  if (done) renewals.delete(url);
+  else r.tries = done === null ? 3 : r.tries + 1;
+}
+
+async function renewOnce(cache, url) {
+  const rev = revs.get(url) || 0; // (the copy there before the fetch: see commit)
+  // Every download of it stops at its deadline, FETCH_MS on, and nothing is published past it (see commit).
+  const end = Date.now() + FETCH_MS;
+  const ctl = new AbortController();
+  const timer = setTimeout(() => ctl.abort(), FETCH_MS);
+  try {
+    const base = await htmlOf(url);
+    const res = base && (await download(url, { cache: 'no-cache', credentials: 'same-origin', signal: ctl.signal }).catch(() => null));
+    if (!res || later(res.status)) return false;
+    if (!cacheable(res) || !isHTML(res)) return null;
+    const html = await res.clone().text().catch(() => null);
+    if (html === null || !isPage(extractAssets(html))) return false; // (no body, or not a page: may work later)
+    const found = await pageFiles(cache, extractAssets(html), true, true, url, null, ctl.signal);
+    if (found.gone) return null; // (a file answered 404/410)
+    if (!found.ok || found.retry) return false;
+    if (found.open) return null;
+    return !!(await publish(cache, url, url, res, html, false, base, rev, { files: Array.from(found.files), end }));
+  } finally {
+    clearTimeout(timer);
+  }
 }
 
 self.addEventListener('fetch', (event) => {
@@ -546,14 +607,15 @@ self.addEventListener('fetch', (event) => {
   if (url.origin !== ORIGIN || bypass(url, req.headers)) return;
 
   if (req.mode === 'navigate') {
-    noteOpening(event.resultingClientId); // (see opening)
+    const note = (res) => (noteOpening(event.resultingClientId), res); // (see opening)
+    note();
     if (url.pathname === '/') {
       // Stale-while-revalidate the shell; query strings (utm_*, etc.) are ignored.
       const hit = cachedCopy('/');
-      event.respondWith(hit.then((res) => res || fetch(req)));
+      event.respondWith(hit.then((res) => res || fetch(req)).then(note));
       event.waitUntil(hit.then(() => refreshShell()).catch(() => {}));
     } else {
-      event.respondWith(networkFirst(event, req));
+      event.respondWith(networkFirst(event, req).then(note));
     }
   } else if (isHashed(url.pathname)) {
     event.respondWith(cacheFirst(event, req));
@@ -599,11 +661,8 @@ async function cacheFirst(event, req) {
 }
 
 /**
- * Turbopack's worker bootstrap reads its config from its URL's fragment (#params=…), and a
- * worker takes the URL of the response it gets. A cached copy can have been fetched without
- * the fragment (Safari lists resources without it, so the page hands over the bare URL), and
- * served as is it starts the worker without its config ("Missing worker bootstrap config").
- * A new Response has no URL, so the worker keeps the one it was created with.
+ * Turbopack's worker bootstrap reads its config from its URL's #params=, and a worker takes the URL of the
+ * response it gets (a cached copy may lack the fragment): a new Response has none, so it keeps its own.
  */
 const asNew = (res) => new Response(res.body, { status: res.status, statusText: res.statusText, headers: res.headers });
 

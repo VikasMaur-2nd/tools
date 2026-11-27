@@ -1966,3 +1966,610 @@ test("service worker (production's layout): after a deploy, the current build's 
   sw.offline();
   assert.deepEqual(await loadsAll(sw, 'n', bFiles), []);
 });
+
+// ── A page the server can no longer complete (PR #41) ───────────────────────────────────────────────────────────────
+
+/** A build whose tool page's own chunk loads one more ('tl.js') that '/' never names. */
+const tooled = (tag: string, more = ''): Files => ({ ...site(tag), [`/_next/static/chunks/${tag}-tool.js`]: `x.l("static/chunks/${tag}-tl.js")${more}`, [`/_next/static/chunks/${tag}-tl.js`]: 'tl()' });
+
+/**
+ * Build a's tool page (and `pages`) cached by a short visit (its tab closed before its warm-up reported: 'a-tl.js' never
+ * followed), then builds b and c deployed, the older builds' files gone from the server, '/' visited and reported each
+ * time. Ends with build b's generation's tabs closed: the next report's clean-up waits on that tool page.
+ */
+async function stranded(sw: ReturnType<typeof worker>, { a = tooled('a'), b = tooled('b'), c = tooled('c'), pages = [] as string[] } = {}) {
+  sw.serve(a);
+  await sw.install();
+  sw.tabs(['a0']);
+  await sw.post(['/'], 'a0');
+  sw.advance(1000);
+  sw.tabs(['a0', 't']);
+  for (const p of ['/tools/json-graph', ...pages]) await sw.visit(p, 't');
+  for (const [tag, files] of [['b', b], ['c', c]] as const) {
+    sw.advance(61_000);
+    sw.serve(files);
+    sw.tabs(['v' + tag]);
+    await sw.visit('/', 'v' + tag);
+    await sw.post(['/'], 'v' + tag);
+  }
+  sw.advance(61_000);
+  assert.match(sw.cached('/tools/json-graph')!, /Graph a/);
+  assert.ok(sw.statics().some((p) => p.endsWith('/b-graph.js')));
+}
+
+const fetchesOf = (sw: ReturnType<typeof worker>, path: string) => sw.fetched.filter((p) => p === path).length;
+
+test("service worker: an old build's page the server can no longer complete is replaced by the network's copy, so old builds can go", async () => {
+  const sw = worker();
+  await stranded(sw);
+  // A tab of build c reports in: the clean-up waits on build a's tool page, follows it, can't complete it: the
+  // network's copy (build c, whole) takes its place, as on a visit.
+  sw.tabs(['n']);
+  await sw.post(['/'], 'n');
+  assert.match(sw.cached('/tools/json-graph')!, /Graph c/);
+  assert.ok(!sw.statics().some((p) => p.includes('/b-')), sw.statics().join(' '));
+  // Build a's files go once the tabs open then are closed.
+  assert.ok(sw.has('/_next/static/chunks/a-tool.js'));
+  sw.tabs(['m']);
+  await sw.post(['/'], 'm');
+  assert.ok(!sw.statics().some((p) => p.includes('/a-')), sw.statics().join(' '));
+  // Offline, the page opens whole.
+  sw.offline();
+  assert.match((await sw.visit('/tools/json-graph', 'off'))!, /Graph c/);
+  assert.deepEqual(await loadsAll(sw, 'off', filesOf('c', tooled('c')).filter((p) => !p.includes('-diff'))), []);
+});
+
+test('service worker: a tab opened on the old copy while it is being replaced keeps its files (PR #41 review, finding 1)', async () => {
+  const sw = worker();
+  await stranded(sw);
+  sw.tabs(['n']);
+  // The network's copy is slow; meanwhile, offline, a tab is opened on the old copy (not among the tabs yet).
+  const release = sw.hold('/tools/json-graph');
+  const report = sw.postSoon(['/'], 'n');
+  await settle();
+  assert.equal(sw.env.holds.get('/tools/json-graph')!.length, 0, "the network's copy is being fetched");
+  sw.offline();
+  assert.match((await sw.visit('/tools/json-graph', 'o'))!, /Graph a/);
+  sw.offline(false);
+  release();
+  await report;
+  assert.match(sw.cached('/tools/json-graph')!, /Graph c/);
+  // It shows, the reporting tab closes: build a's files stay for it, offline too.
+  sw.tabs(['o']);
+  await sw.post(['/'], 'o');
+  sw.offline();
+  assert.deepEqual(await loadsAll(sw, 'o', ['app.css', 'main.js', 'page.js', 'tool.js'].map((f) => `/_next/static/chunks/a-${f}`)), []);
+  sw.offline(false);
+  // Closed: they go.
+  sw.tabs(['m']);
+  await sw.post(['/'], 'm');
+  assert.ok(!sw.statics().some((p) => p.includes('/a-')), sw.statics().join(' '));
+});
+
+test("service worker: a chunk of the replaced page an older generation held is guarded by every tab open now (PR #41 review, finding 2)", async () => {
+  // x.js: loaded by build a's tool chunk and by build c's diff route (a module unchanged).
+  const X = '/_next/static/chunks/x.js';
+  const c = { ...tooled('c'), '/_next/static/chunks/c-diff.js': 'x.l("static/chunks/x.js")', [X]: 'x()' };
+  const sw = worker();
+  await stranded(sw, { a: { ...tooled('a', ';x.l("static/chunks/x.js")'), [X]: 'x()' }, c });
+  // T2 entered on '/' (build c) and went to the diff tool by client-side navigation: x.js is cached.
+  sw.tabs(['T1', 'T2']);
+  assert.equal(await sw.load('/_next/static/chunks/c-diff.js', 'T2'), 'x.l("static/chunks/x.js")');
+  assert.equal(await sw.load(X, 'T2'), 'x()');
+  // An older generation holds x.js, for T1 only (as one formed before x.js was needed would).
+  const rec = sw.record();
+  sw.env.store.set(RECORD, { body: JSON.stringify([...rec, { urls: [ORIGIN + X], clients: ['T1'], at: sw.env.now }]), type: 'application/json' });
+  sw.tabs(['T1', 'T2', 'n']);
+  await sw.post(['/'], 'n');
+  assert.match(sw.cached('/tools/json-graph')!, /Graph c/);
+  // T1 and n close: x.js stays while T2 is open.
+  sw.tabs(['T2']);
+  await sw.post(['/'], 'T2');
+  assert.ok(sw.has(X));
+  sw.offline();
+  assert.equal(await sw.load(X, 'T2'), 'x()');
+});
+
+test("service worker: a language home is never renewed by a report; a visit brings it along", async () => {
+  // '/de' has a chunk of its own that loads one more; build b's and c's '/de' can't be fetched at first.
+  const de = (tag: string, files: Files, ok: boolean): Files => ({
+    ...files,
+    '/de': ok ? html(tag, 'Start ' + tag, `<script src="/_next/static/chunks/${tag}-de.js"></script>`) : 503,
+    [`/_next/static/chunks/${tag}-de.js`]: `x.l("static/chunks/${tag}-del.js")`,
+    [`/_next/static/chunks/${tag}-del.js`]: 'del()',
+  });
+  const sw = worker();
+  await stranded(sw, { a: de('a', tooled('a'), true), b: de('b', tooled('b'), false), c: de('c', tooled('c'), false), pages: ['/de'] });
+  assert.match(sw.cached('/de')!, /Start a/);
+  // '/de' answers again; a report renews the tool page only.
+  sw.serve(de('c', tooled('c'), true));
+  sw.tabs(['n']);
+  const before = fetchesOf(sw, '/de');
+  await sw.post(['/'], 'n');
+  assert.match(sw.cached('/tools/json-graph')!, /Graph c/);
+  assert.equal(fetchesOf(sw, '/de'), before);
+  assert.match(sw.cached('/de')!, /Start a/);
+  // A visit brings '/de' along (refreshHomes).
+  await sw.visit('/tools/json-graph', 'n');
+  assert.match(sw.cached('/de')!, /Start c/);
+});
+
+test("service worker: a stuck page whose network copy isn't whole either is kept, and asked for once while the worker runs", async () => {
+  const sw = worker();
+  // Build c's tool page can't be completed either (its own chunk answers 404 for now).
+  await stranded(sw, { c: { ...tooled('c'), '/_next/static/chunks/c-tl.js': 404 } });
+  sw.tabs(['n']);
+  const before = fetchesOf(sw, '/tools/json-graph');
+  await sw.post(['/'], 'n');
+  assert.match(sw.cached('/tools/json-graph')!, /Graph a/, 'the old copy stays');
+  assert.ok(sw.has('/_next/static/chunks/b-graph.js'), 'and holds the clean-up');
+  assert.equal(fetchesOf(sw, '/tools/json-graph'), before + 1);
+  await sw.post(['/'], 'n');
+  assert.equal(fetchesOf(sw, '/tools/json-graph'), before + 1, 'not again');
+  // The next worker (started again: nothing in memory), once the server has the chunk: renewed.
+  sw.serve(tooled('c'));
+  const again = worker(undefined, sw.env);
+  await again.post(['/'], 'n');
+  assert.match(again.cached('/tools/json-graph')!, /Graph c/);
+});
+
+test("service worker: renewal requires every file the network's copy can load, a lazy wasm too (PR #41 review 2, finding 1)", async () => {
+  // Build c's tool chunk also loads huge mode's wasm, which answers 503 for now.
+  const W = '/_next/static/media/c-h.wasm';
+  const c = { ...tooled('c', ';w("static/media/c-h.wasm")'), [W]: 503 };
+  const sw = worker();
+  await stranded(sw, { c });
+  sw.tabs(['n']);
+  await sw.post(['/'], 'n');
+  assert.match(sw.cached('/tools/json-graph')!, /Graph a/, 'not replaced by a copy missing a file');
+  // The next worker, once the server has it: replaced, the wasm with it.
+  sw.serve({ ...c, [W]: 'wasm' });
+  const again = worker(undefined, sw.env);
+  await again.post(['/'], 'n');
+  assert.match(again.cached('/tools/json-graph')!, /Graph c/);
+  assert.ok(again.has(W));
+});
+
+test("service worker: renewal's commit re-checks every file of the copy, so a clean-up meanwhile can't leave it short (PR #41 review 2, finding 2)", async () => {
+  // s.js (a module unchanged): named by build b's main chunk and by build c's tool chunk, by nothing of build a.
+  const S = '/_next/static/chunks/s.js';
+  const b = { ...tooled('b'), '/_next/static/chunks/b-main.js': 'x.l("static/chunks/b-graph.js");x.l("static/chunks/s.js")', [S]: 's()' };
+  const c = { ...tooled('c', ';x.l("static/chunks/s.js")'), [S]: 's()' };
+  const sw = worker();
+  await stranded(sw, { b, c });
+  assert.ok(sw.has(S), "retired with build b's generation");
+  // A report renews the tool page: s.js is in the cache, build c's tl.js is slow.
+  sw.tabs(['n']);
+  const release = sw.hold('/_next/static/chunks/c-tl.js');
+  const first = sw.postSoon(['/'], 'n');
+  await settle();
+  // Meanwhile the old page's missing chunk is back: another report completes it, and build b's generation goes, s.js too.
+  sw.serve({ ...c, '/_next/static/chunks/a-tl.js': 'tl()' });
+  await sw.post(['/'], 'n');
+  assert.ok(!sw.has(S));
+  release();
+  await first;
+  // The tool page in the cache is whole.
+  const page = sw.cached('/tools/json-graph')!;
+  if (/Graph c/.test(page)) assert.ok(sw.has(S), 'build c\'s copy with s.js');
+  else assert.match(page, /Graph a/);
+  sw.offline();
+  assert.ok((await sw.visit('/tools/json-graph', 'off')) !== null);
+  const tag = /Graph c/.test(page) ? 'c' : 'a';
+  const files = tag === 'c' ? [S, '/_next/static/chunks/c-tl.js'] : ['/_next/static/chunks/a-tl.js'];
+  assert.deepEqual(await loadsAll(sw, 'off', files), []);
+});
+
+test("service worker: a slow renewal never puts its copy over one a visit stored meanwhile, the same files too (PR #41 review 2, finding 5)", async () => {
+  const sw = worker();
+  await stranded(sw);
+  sw.tabs(['n']);
+  // Renewal fetches build c's tool page; its tl.js is slow.
+  const release = sw.hold('/_next/static/chunks/c-tl.js');
+  const report = sw.postSoon(['/'], 'n');
+  await settle();
+  // Meanwhile a visit stores a newer copy of it (the same files, fresher HTML).
+  const c = tooled('c');
+  sw.serve({ ...c, '/tools/json-graph': (c['/tools/json-graph'] as string).replace('Graph c', 'Graph c, newer') });
+  await sw.visit('/tools/json-graph', 'v');
+  assert.match(sw.cached('/tools/json-graph')!, /Graph c, newer/);
+  release();
+  await report;
+  assert.match(sw.cached('/tools/json-graph')!, /Graph c, newer/);
+});
+
+test('service worker: a tab served the cached page after a slow network failure is guarded from then, not from its start (PR #41 review 2, finding 4)', async () => {
+  const sw = worker();
+  sw.serve(site('a'));
+  await sw.install();
+  sw.tabs(['t1']);
+  await sw.visit('/tools/json-graph', 't1');
+  await sw.post(['/', '/tools/json-graph'], 't1');
+  // Build b. A tab opens the tool page: the network takes over a minute, then fails; it gets build a's copy.
+  sw.serve(site('b'));
+  const release = sw.hold('/tools/json-graph');
+  const nav = sw.open('/tools/json-graph', 'o');
+  await settle();
+  sw.advance(61_000);
+  sw.offline();
+  release();
+  assert.match((await nav.text)!, /Graph a/);
+  await nav.done;
+  sw.offline(false);
+  // Before it shows among the tabs: visits bring build b in (build a's files retired), and their tabs close.
+  sw.tabs(['t1', 'v']);
+  await sw.visit('/', 'v');
+  await sw.visit('/tools/json-graph', 'v');
+  sw.tabs(['n']);
+  await sw.post(['/'], 'n');
+  // It shows: build a's files are there for it, offline too.
+  sw.tabs(['n', 'o']);
+  sw.offline();
+  assert.deepEqual(await loadsAll(sw, 'o', ['app.css', 'main.js', 'page.js', 'tool.js'].map((f) => `/_next/static/chunks/a-${f}`)), []);
+  sw.offline(false);
+  // A later tab opens; a minute on, the tab served build a closes: build a goes, though the later tab stays (it is
+  // that tab, by its id, that guarded them: not every tab open a minute on, as a tab without an id would make it).
+  sw.tabs(['n', 'o', 'x']);
+  sw.advance(61_000);
+  await sw.post(['/'], 'x');
+  assert.ok(sw.has('/_next/static/chunks/a-tool.js'));
+  sw.tabs(['x']);
+  await sw.post(['/'], 'x');
+  assert.ok(!sw.statics().some((p) => p.includes('/a-')), sw.statics().join(' '));
+});
+
+test("service worker: a report renews one page, and reports that overlap never ask for the same page twice (PR #41 review 2, finding 6)", async () => {
+  // Build a's diff page is stuck too (its own chunk loads one more, gone with build a).
+  const a = { ...tooled('a'), '/_next/static/chunks/a-diff.js': 'x.l("static/chunks/a-dl.js")', '/_next/static/chunks/a-dl.js': 'dl()' };
+  const sw = worker();
+  await stranded(sw, { a, pages: ['/tools/json-diff'] });
+  const graph = fetchesOf(sw, '/tools/json-graph');
+  const diff = fetchesOf(sw, '/tools/json-diff');
+  // A report asks for one page (the network's copy slow).
+  sw.tabs(['n', 'n2']);
+  const release = sw.hold('/tools/json-graph');
+  const r1 = sw.postSoon(['/'], 'n');
+  await settle();
+  assert.equal(sw.env.holds.get('/tools/json-graph')!.length, 0, 'the tool page is asked for (its answer held)');
+  assert.equal(fetchesOf(sw, '/tools/json-diff') - diff, 0, 'not the diff page');
+  // A report meanwhile doesn't ask for it again (a second request wouldn't be held): it takes the other.
+  const r2 = sw.postSoon(['/'], 'n2');
+  await settle();
+  assert.deepEqual([fetchesOf(sw, '/tools/json-graph') - graph, fetchesOf(sw, '/tools/json-diff') - diff], [0, 1]);
+  release();
+  await Promise.all([r1, r2]);
+  assert.equal(fetchesOf(sw, '/tools/json-graph') - graph, 1);
+  assert.match(sw.cached('/tools/json-graph')!, /Graph c/);
+  assert.match(sw.cached('/tools/json-diff')!, /Diff c/);
+});
+
+test('service worker: a renewal whose downloads drag on keeps its report FETCH_MS at most (PR #41 review 2, finding 6)', async () => {
+  const sw = worker();
+  await stranded(sw);
+  sw.tabs(['n']);
+  // The network's copy takes 20 s, then its tool chunk hangs (each download is given up 30 s after it starts).
+  const page = sw.hold('/tools/json-graph');
+  sw.hold('/_next/static/chunks/c-tool.js');
+  const report = sw.postSoon(['/'], 'n');
+  await settle();
+  sw.advance(20_000);
+  page();
+  await settle();
+  sw.advance(10_000);
+  await settle();
+  assert.ok(await settled(report), 'done 30 s after the renewal began');
+});
+
+test("service worker: past its 30 s a renewal's downloads stop and it never publishes (PR #41 review 3, finding 1)", async () => {
+  const sw = worker();
+  await stranded(sw);
+  sw.tabs(['n']);
+  // The network's copy takes 20 s; its tool chunk then takes longer than the renewal has left.
+  const page = sw.hold('/tools/json-graph');
+  const tool = sw.hold('/_next/static/chunks/c-tool.js');
+  const report = sw.postSoon(['/'], 'n');
+  await settle();
+  sw.advance(20_000);
+  page();
+  await settle();
+  sw.advance(15_000);
+  await settle();
+  // The tool chunk arrives after the deadline: nothing is published.
+  tool();
+  await settle();
+  await report;
+  assert.match(sw.cached('/tools/json-graph')!, /Graph a/);
+});
+
+test("service worker: after a transient failure a later report renews the page again, three tries at most while the worker runs (PR #41 review 3, finding 2)", async () => {
+  const W = '/_next/static/media/c-h.wasm';
+  const c = { ...tooled('c', ';w("static/media/c-h.wasm")'), [W]: 503 };
+  const sw = worker();
+  await stranded(sw, { c });
+  sw.tabs(['n']);
+  const asked = () => fetchesOf(sw, '/tools/json-graph');
+  const before = asked();
+  await sw.post(['/'], 'n');
+  assert.equal(asked() - before, 1);
+  assert.match(sw.cached('/tools/json-graph')!, /Graph a/);
+  // The wasm answers: the next report, in the same worker, renews it.
+  sw.serve({ ...c, [W]: 'wasm' });
+  await sw.post(['/'], 'n');
+  assert.match(sw.cached('/tools/json-graph')!, /Graph c/);
+});
+
+test('service worker: a renewal that keeps failing for a moment is tried three times while the worker runs (PR #41 review 3, finding 2)', async () => {
+  const sw = worker();
+  await stranded(sw, { c: { ...tooled('c'), '/_next/static/chunks/c-tl.js': 503 } });
+  sw.tabs(['n']);
+  const before = fetchesOf(sw, '/tools/json-graph');
+  for (let i = 0; i < 5; i++) await sw.post(['/'], 'n');
+  assert.equal(fetchesOf(sw, '/tools/json-graph') - before, 3);
+  assert.match(sw.cached('/tools/json-graph')!, /Graph a/);
+});
+
+test("service worker: an unrelated page whose re-follow stalls doesn't hold back a renewal (PR #41 review 3, finding 3)", async () => {
+  // Build a's diff page is incomplete too, its own chunk loading one more, which hangs on the network.
+  const a = { ...tooled('a'), '/_next/static/chunks/a-diff.js': 'x.l("static/chunks/a-dl.js")', '/_next/static/chunks/a-dl.js': 'dl()' };
+  const sw = worker();
+  await stranded(sw, { a, pages: ['/tools/json-diff'] });
+  sw.serve({ ...tooled('c'), '/_next/static/chunks/a-dl.js': 404 });
+  sw.tabs(['n']);
+  const release = sw.hold('/_next/static/chunks/a-dl.js');
+  const before = fetchesOf(sw, '/tools/json-graph');
+  const report = sw.postSoon(['/'], 'n');
+  await settle();
+  assert.equal(fetchesOf(sw, '/tools/json-graph') - before, 1, 'the tool page is asked for while the diff page is still followed');
+  release();
+  await report;
+  assert.match(sw.cached('/tools/json-graph')!, /Graph c/);
+});
+
+test("service worker (production's layout): renewal follows the copy's lazy chunks, and keeps the old copy while one doesn't come", async () => {
+  // Build c's tool chunk loads huge mode's wasm, all of it under /_next/static/immutable/; the wasm answers 503.
+  const W = '/_next/static/immutable/media/c-h.wasm';
+  const c = immutable({ ...tooled('c', ';w("static/media/c-h.wasm")'), '/_next/static/media/c-h.wasm': 'wasm' });
+  const sw = worker();
+  await stranded(sw, { a: immutable(tooled('a')), b: immutable(tooled('b')), c: { ...c, [W]: 503 } });
+  sw.tabs(['n']);
+  await sw.post(['/'], 'n');
+  assert.match(sw.cached('/tools/json-graph')!, /Graph a/);
+  // It answers: the next report renews the page, its lazy chunks and the wasm with it.
+  sw.serve(c);
+  await sw.post(['/'], 'n');
+  assert.match(sw.cached('/tools/json-graph')!, /Graph c/);
+  for (const f of ['chunks/c-tl.js', 'media/c-h.wasm', 'chunks/c-graph.js']) assert.ok(sw.has('/_next/static/immutable/' + f), f);
+});
+
+test("service worker: a renewal whose commit is held past its deadline in a lookup never publishes (PR #41 review 4, finding 1)", async () => {
+  const sw = worker();
+  await stranded(sw);
+  sw.tabs(['n']);
+  // The renewal's own follow reads build c's tl.js (1st lookup); its commit's check of it (2nd) takes past the deadline.
+  const release = sw.holdMatch('/_next/static/chunks/c-tl.js', 2);
+  const report = sw.postSoon(['/'], 'n');
+  await settle();
+  sw.advance(31_000);
+  release();
+  await report;
+  assert.match(sw.cached('/tools/json-graph')!, /Graph a/);
+});
+
+test("service worker: a renewal whose page's body stalls is tried again on a later report (PR #41 review 4, finding 2)", async () => {
+  const sw = worker();
+  await stranded(sw);
+  sw.tabs(['n']);
+  // The network's copy: its headers come, its body never ends (given up at the deadline).
+  sw.env.stallBody.add('/tools/json-graph');
+  const report = sw.postSoon(['/'], 'n');
+  await settle();
+  sw.advance(30_000);
+  await report;
+  assert.match(sw.cached('/tools/json-graph')!, /Graph a/);
+  // The server answers whole again: the next report renews it.
+  sw.env.stallBody.delete('/tools/json-graph');
+  await sw.post(['/'], 'n');
+  assert.match(sw.cached('/tools/json-graph')!, /Graph c/);
+});
+
+test("service worker: a file of the copy answering 404, a script's or a wasm, stops its renewal at once (PR #41 review 4, finding 2)", async () => {
+  const W = '/_next/static/media/c-h.wasm';
+  const sw = worker();
+  await stranded(sw, { c: { ...tooled('c', ';w("static/media/c-h.wasm")'), [W]: 404 } });
+  sw.tabs(['n']);
+  const before = fetchesOf(sw, '/tools/json-graph');
+  for (let i = 0; i < 3; i++) await sw.post(['/'], 'n');
+  assert.equal(fetchesOf(sw, '/tools/json-graph') - before, 1, 'asked for once, as for a script answering 404');
+  assert.match(sw.cached('/tools/json-graph')!, /Graph a/);
+});
+
+test("service worker: a renewal whose wasm is gone from the cache by its commit is refused there (PR #41 review 4, finding 2)", async () => {
+  const W = '/_next/static/media/c-h.wasm';
+  const sw = worker();
+  await stranded(sw, { c: { ...tooled('c', ';w("static/media/c-h.wasm")'), [W]: 'wasm' } });
+  sw.tabs(['n']);
+  // The follow caches the wasm (1st lookup); while the commit checks it (2nd), it is deleted.
+  const release = sw.holdMatch(W, 2);
+  const report = sw.postSoon(['/'], 'n');
+  await settle();
+  sw.env.store.delete(ORIGIN + W);
+  release();
+  await report;
+  assert.match(sw.cached('/tools/json-graph')!, /Graph a/);
+});
+
+test("service worker: a report whose re-follow ends after another report renewed the page doesn't renew it again (PR #41 review 4, finding 3)", async () => {
+  const sw = worker();
+  await stranded(sw);
+  sw.tabs(['n', 'n2']);
+  const before = fetchesOf(sw, '/tools/json-graph');
+  // Report A's re-follow of build a's missing chunk is slow; report B renews the page meanwhile.
+  const release = sw.hold('/_next/static/chunks/a-tl.js');
+  const a = sw.postSoon(['/'], 'n');
+  await settle();
+  await sw.post(['/'], 'n2');
+  assert.match(sw.cached('/tools/json-graph')!, /Graph c/);
+  // A's re-follow ends (the old copy incomplete): the page isn't asked for again.
+  release();
+  await a;
+  assert.equal(fetchesOf(sw, '/tools/json-graph') - before, 1);
+});
+
+test("service worker: a re-follow that fails leaves the renewal and the clean-up inside the report (PR #41 review 4, finding 4)", async () => {
+  // Build a's diff page is incomplete too; reading its missing chunk from the cache fails (a storage error).
+  const a = { ...tooled('a'), '/_next/static/chunks/a-diff.js': 'x.l("static/chunks/a-dl.js")', '/_next/static/chunks/a-dl.js': 'dl()' };
+  const sw = worker();
+  await stranded(sw, { a, pages: ['/tools/json-diff'] });
+  sw.failMatch((u) => u.endsWith('/a-dl.js'));
+  sw.tabs(['n']);
+  // The tool page's re-follow is slow.
+  const release = sw.hold('/_next/static/chunks/a-tl.js');
+  const report = sw.postSoon(['/'], 'n');
+  await settle();
+  assert.ok(!(await settled(report)), 'the report waits for the other re-follow');
+  release();
+  await report;
+  // Its renewal happened within the report.
+  assert.match(sw.cached('/tools/json-graph')!, /Graph c/);
+});
+
+test("service worker: an empty page, or one naming none of the build's scripts, never takes a cached page's place (PR #41 review 5, finding 1)", async () => {
+  const sw = worker();
+  await stranded(sw);
+  // Renewal: the network answers the tool page with an empty 200 for a moment.
+  sw.serve({ ...tooled('c'), '/tools/json-graph': '' });
+  sw.tabs(['n']);
+  await sw.post(['/'], 'n');
+  assert.match(sw.cached('/tools/json-graph')!, /Graph a/);
+  // A transient failure: once the page is whole again, a later report renews it.
+  sw.serve(tooled('c'));
+  await sw.post(['/'], 'n');
+  assert.match(sw.cached('/tools/json-graph')!, /Graph c/);
+  // A navigation, and a visit to '/', getting an empty or script-less page: the cached copies stay.
+  sw.serve({ ...tooled('c'), '/tools/json-graph': '<!doctype html><title>Oops</title>', '/': '' });
+  await sw.visit('/tools/json-graph', 'v');
+  await sw.visit('/', 'v');
+  assert.match(sw.cached('/tools/json-graph')!, /Graph c/);
+  assert.match(sw.cached('/')!, /Home c/);
+});
+
+test("service worker: an optional file of the copy answering 404 (its manifest) doesn't stop its renewal (PR #41 review 5, finding 2)", async () => {
+  const c = tooled('c');
+  const page = (c['/tools/json-graph'] as string).replace('<link rel="icon"', '<link rel="manifest" href="/manifest.webmanifest"><link rel="icon"');
+  const sw = worker();
+  await stranded(sw, { c: { ...c, '/tools/json-graph': page, '/manifest.webmanifest': 404 } });
+  sw.tabs(['n']);
+  await sw.post(['/'], 'n');
+  assert.match(sw.cached('/tools/json-graph')!, /Graph c/);
+});
+
+test("service worker: a copy of the same files stored during the re-follow doesn't make the report skip a page still incomplete (PR #41 review 5, finding 3)", async () => {
+  const a = tooled('a');
+  const sw = worker();
+  await stranded(sw);
+  sw.tabs(['n']);
+  // The report's re-follow of build a's missing chunk is slow; meanwhile a visit stores build a's page again
+  // (fresher HTML, the same files: still incomplete).
+  const release = sw.hold('/_next/static/chunks/a-tl.js');
+  const report = sw.postSoon(['/'], 'n');
+  await settle();
+  const c = tooled('c');
+  sw.serve({ ...c, '/tools/json-graph': (a['/tools/json-graph'] as string).replace('Graph a', 'Graph a, again') });
+  await sw.visit('/tools/json-graph', 'v');
+  assert.match(sw.cached('/tools/json-graph')!, /Graph a, again/);
+  sw.serve(c);
+  release();
+  await report;
+  assert.match(sw.cached('/tools/json-graph')!, /Graph c/);
+});
+
+test("service worker: a page's walk waits for every file it started before a failure ends it (PR #41 review 5, finding 4)", async () => {
+  // '/' loads x.js and y.js later; reading x.js from the cache fails, y.js's download is slow.
+  const X = '/_next/static/chunks/x.js';
+  const Y = '/_next/static/chunks/y.js';
+  const sw = worker();
+  sw.serve({ '/': html('a', 'Home a'), '/_next/static/chunks/a-main.js': 'x.l("static/chunks/x.js");x.l("static/chunks/y.js")', '/_next/static/chunks/a-app.css': 'b{}', '/_next/static/chunks/a-page.js': 'p()', [X]: 'x()', [Y]: 'y()', '/icon.svg': '<svg/>' });
+  await sw.install();
+  sw.failMatch((u) => u.endsWith('/x.js'));
+  const release = sw.hold(Y);
+  const report = sw.postSoon(['/']);
+  await settle();
+  assert.ok(!(await settled(report)), 'still waiting for y.js');
+  release();
+  await report;
+  assert.ok(sw.has(Y), 'stored within the report');
+});
+
+test("service worker: a report cleans up last, within its lifetime, once every re-follow is done (PR #41 review 5, test note)", async () => {
+  // Build a's diff page is incomplete too; its missing chunk is still on the server, but slow.
+  const a = { ...tooled('a'), '/_next/static/chunks/a-diff.js': 'x.l("static/chunks/a-dl.js")', '/_next/static/chunks/a-dl.js': 'dl()' };
+  const sw = worker();
+  await stranded(sw, { a, pages: ['/tools/json-diff'] });
+  sw.serve({ ...tooled('c'), '/_next/static/chunks/a-dl.js': 'dl()' });
+  sw.tabs(['n']);
+  const release = sw.hold('/_next/static/chunks/a-dl.js');
+  const report = sw.postSoon(['/'], 'n');
+  await settle();
+  // The tool page is renewed, but the diff page still holds the clean-up (its chunk not in yet).
+  assert.match(sw.cached('/tools/json-graph')!, /Graph c/);
+  assert.ok(sw.statics().some((p) => p.endsWith('/b-graph.js')), 'build b held');
+  // Its chunk comes: by the time the report is done, build b is gone.
+  release();
+  await report;
+  assert.ok(!sw.statics().some((p) => p.includes('/b-')), sw.statics().join(' '));
+});
+
+test("service worker: a renewal answered by a script-less page naming a file that's gone is tried again later (PR #41 review 6, finding 1)", async () => {
+  const sw = worker();
+  await stranded(sw);
+  // For a moment the tool page is an error page naming an old stylesheet the server no longer has.
+  const oops = '<!doctype html><title>Oops</title><link rel="stylesheet" href="/_next/static/chunks/old-app.css">';
+  sw.serve({ ...tooled('c'), '/tools/json-graph': oops, '/_next/static/chunks/old-app.css': 404 });
+  sw.tabs(['n']);
+  await sw.post(['/'], 'n');
+  assert.match(sw.cached('/tools/json-graph')!, /Graph a/);
+  // Not a page: no reason to give up. Once the page is back, a later report renews it.
+  sw.serve(tooled('c'));
+  await sw.post(['/'], 'n');
+  assert.match(sw.cached('/tools/json-graph')!, /Graph c/);
+});
+
+test("service worker: a page stored anew while its old copy's re-follow completes is followed too (PR #41 review 6, finding 2)", async () => {
+  const sw = worker();
+  await stranded(sw);
+  sw.tabs(['n']);
+  // The old copy's missing chunk is back on the server, but slow; meanwhile a visit stores build c's page (its own
+  // lazy chunk, c-tl.js, not cached by the visit).
+  sw.serve({ ...tooled('c'), '/_next/static/chunks/a-tl.js': 'tl()' });
+  const release = sw.hold('/_next/static/chunks/a-tl.js');
+  const report = sw.postSoon(['/'], 'n');
+  await settle();
+  await sw.visit('/tools/json-graph', 'v');
+  assert.match(sw.cached('/tools/json-graph')!, /Graph c/);
+  assert.ok(!sw.has('/_next/static/chunks/c-tl.js'), 'not followed by the visit');
+  // The old copy's walk now completes: the report follows the copy there now, not just the one it started with.
+  release();
+  await report;
+  assert.ok(sw.has('/_next/static/chunks/c-tl.js'), 'the new copy followed');
+});
+
+test("service worker: one page's walk failing doesn't end a report whose other page is still downloading (PR #41 review 6, finding 3)", async () => {
+  // '/' names one more script than the tool page; reading it from the cache fails. The tool page's lazy chunk is slow.
+  const a = tooled('a');
+  a['/'] = html('a', 'Home a', '<script src="/_next/static/chunks/a-home.js"></script>');
+  a['/_next/static/chunks/a-home.js'] = 'home()';
+  const sw = worker();
+  sw.serve(a);
+  await sw.install();
+  sw.tabs(['t']);
+  await sw.visit('/tools/json-graph', 't');
+  assert.ok(!sw.has('/_next/static/chunks/a-tl.js'));
+  sw.failMatch((u) => u.endsWith('/a-home.js'));
+  const release = sw.hold('/_next/static/chunks/a-tl.js');
+  const report = sw.postSoon(['/', '/tools/json-graph'], 't');
+  await settle();
+  assert.ok(!(await settled(report)), 'still waiting for the tool page');
+  release();
+  await report;
+  assert.ok(sw.has('/_next/static/chunks/a-tl.js'), 'stored within the report');
+});
